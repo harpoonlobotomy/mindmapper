@@ -1,12 +1,22 @@
 """shit I should just make a mind-map script. Goddamn. 10.41am 23/6/26"""
 
 import FreeSimpleGUI as sg
+from tkinter import Canvas
 
 class window_data:
     def __init__(self):
+        self.testing = True
+
         self.window_size:tuple[int,int] = (1600,1920)
         self.graph_dimensions =  self.window_size[0]*.8, self.window_size[1]*.8
+        self.header_height = self.window_size[0]*.2
 
+        self.active_tool = "rectangle"
+
+        self.ratio_part_1 = 1
+        self.ratio_part_2 = 1
+        self.ratio:tuple[int,int] = (self.ratio_part_1, self.ratio_part_2)
+        self.show_ratio:bool=False
 
     def get_graph_dimensions(self):
 
@@ -18,14 +28,20 @@ class window_data:
 
                 screen_size = window.get_screen_dimensions()
                 if screen_size:
+                    window.close()
                     break
             return screen_size
-        self.window_size = get_window_size()
+
+        if self.testing:
+            self.window_size = (1000,600)#get_window_size() #
+        else:
+            self.window_size = get_window_size()
         """ Just an approximation for the moment.
         1/5th for the header
         grid = 4/5ths wide
         """
         self.graph_dimensions = self.window_size[0]*.8, self.window_size[1]*.8
+        self.header_height = self.window_size[0]*.2
 
     def get_tl_br(self):
         left = 0
@@ -37,52 +53,243 @@ class window_data:
 
 w = window_data()
 
+class graph_data():
+
+    def __init__(self):
+        self.graph:sg.Graph = None
+        self.canvas:Canvas = "black"
+        self.figures:list[int] = []
+        self.temp_figures:list[int] = []
+
+        self.fill_colour:str = None
+        self.line_colour:str = None
+
+        self.line_width = 3
+        self.line_type = "single_line"
+
+        self.current_figure = []
+
+        self.selection_area = []
+        self.selected_figure:int = None
+        self.selected_coords:list[int] = []
+
+    def clear_all(self):
+        self.figures = []
+
+g = graph_data()
+
 
 def make_window():
+# back at it, 2:56pm
 
-    def default_content(call_name):
-        return sg.Column(layout=[[sg.Text(call_name)]])
+    #def set_ratio(ratio=(1,1)):
+        #return [sg.InputText(default_text=str(ratio[0]), size=(2,1)), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(ratio[1]), size=(2,1))]
+
+    def move(target_loc):
+        for fig in g.temp_figures:
+            g.graph.delete_figure(fig)
+        g.temp_figures = []
+
+        if not g.selected_figure:
+            print("No selected figure, cannot move.")
+            return []
+
+        graph.relocate_figure(g.selected_figure, target_loc[0], target_loc[1])
+        # For two: It moves to the top left, so if yo click something to start moving from the middle, you've moved the the top left of the thing to centre.
+        #graph.delete_figure(g.selected_figure)
+        #g.selected_figure = temp
+
+        #graph.RelocateFigure(g.selected_figure, target_loc[0], target_loc[1])
+
+
+
+    def draw(current_figure, temp=False):
+        #if temp:
+        for fig in g.temp_figures:
+            g.graph.delete_figure(fig)
+            g.temp_figures = []
+
+        if w.active_tool == "rectangle":
+            figure = g.graph.draw_rectangle(top_left=current_figure[0], bottom_right=current_figure[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
+            print(f"DREW A RECTANGLE: {figure}")
+            if temp:
+                g.temp_figures.append(figure)
+            else:
+                g.figures.append(figure)
+                g.selected_figure = figure
+                print(f"non temp rectangle: {figure})")
+
+
+        elif w.active_tool == "circle":
+            import math
+            d = math.sqrt((current_figure[1][0] - current_figure[0][0])**2 + (current_figure[1][1] - current_figure[0][1])**2) # for properly round circles.
+
+            figure = g.graph.draw_oval(top_left=current_figure[0], bottom_right=current_figure[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
+            #figure = g.graph.draw_circle(center_location=current_figure[0], radius=d, fill_color=g.fill_colour, line_color=g.line_colour)
+            if temp:
+                g.temp_figures.append(figure)
+            else:
+                g.figures.append(figure)
+                g.selected_figure = figure
+
+        elif w.active_tool == "line":
+            figure = g.graph.draw_line(point_from=current_figure[0], point_to=current_figure[1], color=g.line_colour, width=g.line_width)
+            if temp:
+                g.temp_figures.append(figure)
+            else:
+                if g.line_type == "polygon": # note: this way of doing polygons doesn't work because you can't move them, selecting selects a specific line, not the full polygon obj.
+                    if not temp:
+                        g.selected_figure = figure
+                        return list((current_figure[1],))
+                else:
+                    g.figures.append(figure)
+                    g.selected_figure = figure
+
+        return []
+
+    def select(selection_area):
+        figures = graph.get_figures_at_location(selection_area)
+        if not figures:
+            print("No figures at location.")
+            return
+        print(f"Figures at this location: {figures}")
+        figure = figures[0] if figures else None
+
+        print(f"g.canvas coords for newly selected figure: {g.canvas.coords(figure)} / figure: {figure}")
+        g.selected_figure = figure
+        g.selected_coords = g.canvas.coords(figure)
+
+
+
+
+    def update_ratio(event, values):
+
+        if event == "ratio_part_1" and values["ratio_part_1"] != w.ratio_part_1:
+            print(f"updated ratio_part_1 to {values['ratio_part_1']}")
+            w.ratio_part_1 = values["ratio_part_1"]
+
+        if event == "ratio_part_2" and values["ratio_part_2"] != w.ratio_part_2:
+            print(f"updated ratio_part_2 to {values['ratio_part_2']}")
+            w.ratio_part_2 = values["ratio_part_2"]
+
+
+    def show_set_ratio(force_visible=False, force_hidden=False, ignore_checkbox=False):
+
+        print("def show_set_ratio")
+        window.refresh()
+        if (w.show_ratio or force_visible) and not force_hidden:
+            window["set_ratio_column"].unhide_row()
+            window["set_ratio_column"].update(visible=True)
+            if not ignore_checkbox:
+                check = window["set_ratio_rect"] #type: sg.Checkbox
+                check.update(value=True)
+                window["set_ratio_circ"].update(value=True)
+
+        else:
+            window["set_ratio_column"].hide_row()
+            window["set_ratio_column"].update(visible=False)
+
+            if not ignore_checkbox:
+                window["set_ratio_rect"].update(value=False)
+                window["set_ratio_circ"].update(value=False)
+
+
+    def select_tool(event:str):
+        w.active_tool = event
+        #"rectangle", "circle", "line", "select", "move"
+        all_buttons = ["tool_buttons_select", "tool_buttons_rectangle", "tool_buttons_circle", "tool_buttons_line"]
+        for panel in all_buttons:
+            if panel.endswith(event):# and values[event]:
+                window["tool_options_panel"].update(event)
+                window[panel].unhide_row()
+                window[panel].update(visible=True)
+            else:
+                window[panel].hide_row()
+        #window.refresh()
+        if w.show_ratio and event in ("rectangle", "circle"): # the two that do have set_ratio; need to make this automatic later.
+            show_set_ratio(force_visible=True)
+        else:
+            show_set_ratio(force_hidden=True)
+
+
+
+    def simple_radio(group="select_tool", button_name:str="select", is_default_true=False):
+        if len(button_name) == 1:
+            key = group + button_name
+        else:
+            key = button_name
+
+        return sg.Radio(text=button_name, group_id=group, default=is_default_true, key=key.lower().replace(" ", "_"), enable_events=True)
 
     def simple_button(button_name:str):
         #return [sg.Button(button_text=button_name, key=button_name.replace(" ","_").lower())],
 # TODO: make placeholder images for header buttons ( + button panel buttons later too)
         return sg.Button(button_text=button_name, key=button_name.replace(" ","_").lower())
 
-    #    return sg.Column(layout=[
-    #        [sg.Button(button_text="placeholder", key=button_name.replace(" ","_").lower())],
-    #        [sg.Text(button_name)]
-    #        ], element_justification="center", background_color="#5F7766")
 
 #     top bar: New, Undo, Redo, Save, Save As, Settings/Change Defaults
+
+
+    def tool_options():
+        """
+        radio buttons:
+            select mode: select_one, add_to_selection, remove_from_selection, clear_selection
+
+            rectangle mode: round_edges, hard_edges, set_ratio
+                * if set_ratio: option to set ratio to x:y
+                * if round_edges: radius of round edges
+
+            circle_mode: set_ratio checkbox
+                * if set_ratio: option to set ratio to x:y
+
+            line mode: single_line, polygon
+                * if polygon:
+                    fill_polygon (checkbox)
+
+        Just going to hide/show panels here.
+        """
+
+        select_buttons = sg.Column(layout=[[simple_radio(group="select", button_name="select one"), simple_radio(group="select", button_name="add to selection"), simple_radio(group="select", button_name="remove from selection")], [simple_button(button_name="clear selection")]], key="tool_buttons_select", visible=False)
+
+        rectangle_buttons = sg.Column(layout=[[simple_radio("rectangle", "round edges", True), simple_radio("rectangle", "hard edges")], [sg.Checkbox(text="set ratio", default=False, enable_events=True, key="set_ratio_rect", tooltip="Does nothing yet...")]], key="tool_buttons_rectangle", visible=False)
+
+        circle_buttons = sg.Column(layout=[[sg.Checkbox(text="set ratio", default=False, enable_events=True, key="set_ratio_circ", tooltip="Does nothing yet...")]], key="tool_buttons_circle", visible=False)
+
+        line_buttons = sg.Column(layout=[[simple_radio(group="line", button_name="single line", is_default_true=True), simple_radio(group="line", button_name="polygon"), sg.Button(button_text="close_polygon", enable_events=True, key="close_polygon")]], key="tool_buttons_line", visible=False)
+
+        return [[sg.Column(layout=[
+            [select_buttons],
+            [rectangle_buttons],
+            [circle_buttons],
+            [line_buttons],
+
+        ])], [sg.Column(layout=[[sg.Column(layout=[[sg.InputText(default_text=str(w.ratio[0]), size=(2,1), key="ratio_part_1", enable_events=True), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(w.ratio[1]), size=(2,1), key="ratio_part_2", enable_events=True)]], visible=False, key="set_ratio_column", pad=0)]])]]
+
+
     header_buttons = [
         [simple_button("New"), simple_button("Undo"), simple_button("Redo"), simple_button("Save"), simple_button("Save As"), simple_button("Settings")]
         ]
-    header = [
-        sg.Column(layout=header_buttons)
-        ]
+    header = [sg.Frame(title="mindmapper", layout=header_buttons, size=(None, 120), expand_x=True, pad=15)]
 
-
-    graph = sg.Graph(canvas_size=w.graph_dimensions, graph_bottom_left=w.graph_bottom_left, graph_top_right=w.graph_top_right, background_color="#D6ECF1")
+    graph = sg.Graph(canvas_size=w.graph_dimensions, graph_bottom_left=w.graph_bottom_left, graph_top_right=w.graph_top_right, background_color="#D6ECF1", enable_events=True, drag_submits=True, motion_events=False, key="graph", right_click_menu=[["menu_list"], ["later, select tools from here", "and/or change settings"]])
 
     tool_picker = [
-            [simple_button("rectangle"), simple_button("oval"), simple_button("line"), simple_button("select")]#default_content("tool_picker")]
+            [simple_radio(group="select_tool", button_name="rectangle", is_default_true=True), simple_radio(group="select_tool", button_name="circle"), simple_radio(group="select_tool", button_name="line"), simple_radio(group="select_tool", button_name="select"), simple_radio(group="select_tool", button_name="move")]
         ]
-    shape_options = [
-        # this is for rounded rectangles, radius of rounding, etc. But might have to change depending on which tool? 'round edges' make no sense for a circle.
-            [simple_button("round_edges"), simple_button("radius_increase"), simple_button("radius_decrease")]#default_content("tool_picker")]
-    ]
+
     line_width = [
-        [simple_button("size_1"), simple_button("size_2"), simple_button("size_3"), simple_button("size_4"), simple_button("size_5"), simple_button("edit_sizes")] # edit sizes should be per-button, not an addon, but it's here to remind me to do that.
+        [simple_radio("line_width", "1"), simple_radio("line_width", "3", is_default_true=True), simple_radio("line_width", "5"), simple_radio("line_width", "7"), simple_radio("line_width", "9")]#, simple_radio("line_width", "edit_sizes")] # edit sizes should be per-button, not an addon, but it's here to remind me to do that.
         ]
     copy_paste_etc = [
         [simple_button("copy"), simple_button("paste"), simple_button("duplicate"), simple_button("delete")]
         ]
     colour_panel = [
-        [sg.ColorChooserButton(button_text="Stroke Colour"), sg.ColorChooserButton(button_text="Fill Colour")]
+        [sg.ColorChooserButton(button_text="Stroke Colour"), sg.ColorChooserButton(button_text="Fill Colour")],
+        [sg.Button(button_text="Update selected", key="update_selected_to_curr_colours")]
     ]
     button_panel = sg.Column(layout=[
-        [sg.Frame(title="tool_picker", layout=tool_picker)],
-        [sg.Frame(title="shape_options", layout=shape_options)],
+        [sg.Frame(title="tool_picker", layout=tool_picker, key="tool_picker")],
+        [sg.Frame(title="tool_options", layout=tool_options(), key="tool_options_panel")],
         [sg.Frame(title="line_width", layout=line_width)],
         [sg.Frame(title="copy_paste_etc", layout=copy_paste_etc)],
         [sg.Frame(title="colour_panel", layout=colour_panel)], # set it to open the colour dialog window nearer to the button, currently it's aiming for 0,0
@@ -106,18 +313,95 @@ def make_window():
         ]
 
     layout=[
-        [sg.Frame(title="", layout=main_frame, background_color="#444444", relief="sunken", border_width=12)] # actually no it's: flat, groove, raised, ridge, solid, or sunken # RELIEF_RAISED RELIEF_SUNKEN RELIEF_FLAT RELIEF_RIDGE RELIEF_GROOVE RELIEF_SOLID
+        [sg.Frame(title="", layout=main_frame, background_color="#444444", relief="groove", border_width=12, vertical_alignment="center", expand_y=True)] # actually no it's: flat, groove, raised, ridge, solid, or sunken # RELIEF_RAISED RELIEF_SUNKEN RELIEF_FLAT RELIEF_RIDGE RELIEF_GROOVE RELIEF_SOLID
         ]
 
-    window = sg.Window(title="mindmapper", layout=layout, finalize=True, return_keyboard_events=True)
+    window = sg.Window(title="mindmapper", layout=layout, finalize=True, return_keyboard_events=True, element_padding=(5,5,5,5))
+
+    def setup_window():
+        if not w.testing:
+            window.maximize()
+        select_tool(w.active_tool)
+        g.graph = window["graph"] ## type: sg.Graph
+        g.canvas = window["graph"].Widget
+
+    setup_window()
+    g.current_figure = []
 
     while True and not window.is_closed():
-        event, values = window.read(1000)
+        event, values = window.read(500)
         if event and event != "__TIMEOUT__":
-            print(f"Event: {event}")
 
-            if event.startswith("Escape") or window.is_closed():
+            if (isinstance(event, str) and event.startswith("Escape")) or window.is_closed():
                 break
+
+            if event == "new":
+                print("event new")
+                window.close()
+                return "restart"
+
+
+            if event.startswith("graph"):
+
+                if w.active_tool in ("rectangle", "circle", "line"):
+
+                    if event == "graph+UP":
+                        g.current_figure.append(values["graph"])
+                        g.current_figure = draw(g.current_figure)
+
+                    else:
+                        if not g.current_figure:
+                            g.current_figure.append(values["graph"])
+
+                        else:
+                            ending = values["graph"]
+                            draw((g.current_figure[0], ending), temp=True)
+
+                else:
+                    if w.active_tool == "select":
+                        if event == "graph+UP":
+                            select(values["graph"])
+
+                    elif w.active_tool == "move" and g.selected_figure:
+                        #if event == "graph+UP":
+                        move(values["graph"])
+
+
+                        """else:
+                            if not g.current_figure:
+                                g.move_figure.append(values["graph"])
+
+                            else:
+                                ending = values["graph"]
+                                draw((g.move_figure[0], ending), temp=True)
+"""
+
+
+            elif g.current_figure:
+                g.current_figure = []#= draw(g.current_figure) # so that if you click anything non-graph while drawing a polygon, it just ends drawing that polygon.
+
+            elif event in ("rectangle", "circle", "line", "select", "move"):
+                print(f"EVENT: {event}")
+                select_tool(event)
+
+            elif event.startswith("line_width"):
+                g.line_width = event.replace("line_width", "")
+
+            elif event in ("polygon", "single_line"):
+                g.line_type = event
+
+            elif event.startswith("set_ratio"):
+                w.show_ratio = not w.show_ratio
+                show_set_ratio()
+
+            elif event in ("ratio_part_1", "ratio_part_2"):
+                update_ratio(event, values)
+
+
+
+            else:
+                print(f"EVENT: `{event}`")# / values: `{values}`")
+
 
 
 def setup():
@@ -127,6 +411,13 @@ def setup():
 
 def run():
     setup()
-    make_window()
+    while True:
+        outcome = make_window()
+        if outcome:
+            if outcome == "restart":
+                continue
+        else:
+            break
+
 
 run()
