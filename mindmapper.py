@@ -1,7 +1,9 @@
 """shit I should just make a mind-map script. Goddamn. 10.41am 23/6/26"""
-
+#"D:\Git_Repos\PIL-expanded\Scripts\Utilities\bbox_manip.py"
 import FreeSimpleGUI as sg
 from tkinter import Canvas
+
+#from ..PIL_expanded.Scripts.Utilities import bbox_manip
 
 class window_data:
     def __init__(self):
@@ -84,6 +86,15 @@ def make_window():
 
     #def set_ratio(ratio=(1,1)):
         #return [sg.InputText(default_text=str(ratio[0]), size=(2,1)), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(ratio[1]), size=(2,1))]
+    def bbox_width_and_height(bbox) -> tuple[float, float]:
+        left, top, right, bottom = bbox
+        width = right - left
+        height = bottom - top
+        return width, height
+
+    def get_half_dimensions(bbox):
+        width, height = bbox_width_and_height(bbox)
+        return int(width/2), int(height/2)
 
     def move(target_loc):
         for fig in g.temp_figures:
@@ -93,7 +104,7 @@ def make_window():
         if not g.selected_figure:
             print("No selected figure, cannot move.")
             return []
-
+        print(f"Figure to move: {g.selected_figure}")
         graph.relocate_figure(g.selected_figure, target_loc[0], target_loc[1])
         # For two: It moves to the top left, so if yo click something to start moving from the middle, you've moved the the top left of the thing to centre.
         #graph.delete_figure(g.selected_figure)
@@ -104,6 +115,25 @@ def make_window():
 
 
     def draw(current_figure, temp=False):
+        def add_text_to_figure_centre(figure):
+        #g.canvas.find_enclosed()
+        #g.canvas.find_closest()
+
+            x, y = get_half_dimensions(g.canvas.bbox(figure))
+            a, b = current_figure[0]
+            ### currently places the text at text(0,0) to figure centre, instead of text centre to text centre.
+            x += a
+            y += b
+            text = graph.draw_text(text=values["add_text"], location=(x,y))
+            text_x, text_y = get_half_dimensions(g.canvas.bbox(text))
+
+            graph.draw_rectangle(top_left=(g.canvas.bbox(text)[0]-text_x/4, g.canvas.bbox(text)[1]-text_y/2), bottom_right=(g.canvas.bbox(text)[2], g.canvas.bbox(text)[3]), fill_color="white")
+## I want to tie the text and background rectangle together. And to be able to edit the text.
+### TODO: need grouping, asap.
+            graph.relocate_figure(text, x-text_x/8, y-text_y/4)
+
+            graph.bring_figure_to_front(text)
+
         #if temp:
         for fig in g.temp_figures:
             g.graph.delete_figure(fig)
@@ -116,6 +146,10 @@ def make_window():
                 g.temp_figures.append(figure)
             else:
                 g.figures.append(figure)
+                if values.get("add_text"):
+
+                    add_text_to_figure_centre(figure)
+
                 g.selected_figure = figure
                 print(f"non temp rectangle: {figure})")
 
@@ -131,6 +165,8 @@ def make_window():
             else:
                 g.figures.append(figure)
                 g.selected_figure = figure
+                if values.get("add_text"):
+                    add_text_to_figure_centre(figure)
 
         elif w.active_tool == "line":
             figure = g.graph.draw_line(point_from=current_figure[0], point_to=current_figure[1], color=g.line_colour, width=g.line_width)
@@ -140,10 +176,14 @@ def make_window():
                 if g.line_type == "polygon": # note: this way of doing polygons doesn't work because you can't move them, selecting selects a specific line, not the full polygon obj.
                     if not temp:
                         g.selected_figure = figure
+                        if values.get("add_text"):
+                            add_text_to_figure_centre(figure)
                         return list((current_figure[1],))
                 else:
                     g.figures.append(figure)
                     g.selected_figure = figure
+                    if values.get("add_text"):
+                        add_text_to_figure_centre(figure)
 
         return []
 
@@ -263,7 +303,7 @@ def make_window():
             [circle_buttons],
             [line_buttons],
 
-        ])], [sg.Column(layout=[[sg.Column(layout=[[sg.InputText(default_text=str(w.ratio[0]), size=(2,1), key="ratio_part_1", enable_events=True), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(w.ratio[1]), size=(2,1), key="ratio_part_2", enable_events=True)]], visible=False, key="set_ratio_column", pad=0)]])]]
+        ])], [sg.Column(layout=[[sg.Column(layout=[[sg.InputText(default_text=str(w.ratio[0]), size=(2,1), key="ratio_part_1", enable_events=True), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(w.ratio[1]), size=(2,1), key="ratio_part_2", enable_events=True)]], visible=False, key="set_ratio_column", pad=0)]])], [sg.Text("Element text:")],[sg.InputText(default_text='', key="add_text")]]
 
 
     header_buttons = [
@@ -361,11 +401,12 @@ def make_window():
                     if w.active_tool == "select":
                         if event == "graph+UP":
                             select(values["graph"])
+                    # if click and drag selection:
+                    #    g.canvas.find_enclosed()
 
                     elif w.active_tool == "move" and g.selected_figure:
                         #if event == "graph+UP":
                         move(values["graph"])
-
 
                         """else:
                             if not g.current_figure:
@@ -375,7 +416,6 @@ def make_window():
                                 ending = values["graph"]
                                 draw((g.move_figure[0], ending), temp=True)
 """
-
 
             elif g.current_figure:
                 g.current_figure = []#= draw(g.current_figure) # so that if you click anything non-graph while drawing a polygon, it just ends drawing that polygon.
