@@ -1,10 +1,9 @@
 """shit I should just make a mind-map script. Goddamn. 10.41am 23/6/26"""
-#"D:\Git_Repos\PIL-expanded\Scripts\Utilities\bbox_manip.py"
+
 import FreeSimpleGUI as sg
 from tkinter import Canvas
 import bbox_manip as bb
 
-#from ..PIL_expanded.Scripts.Utilities import bbox_manip
 
 class window_data:
     def __init__(self):
@@ -54,6 +53,7 @@ class window_data:
         self.graph_bottom_left = (left, bottom)
         self.graph_top_right = (right, top)
 
+
 w = window_data()
 
 class figure_data():
@@ -76,6 +76,7 @@ class graph_data():
 
         self.fill_colour:str = None
         self.line_colour:str = None
+        self.lighter_line_colour:str = "#494949"
 
         self.line_width = 3
         self.line_type = "single_line"
@@ -91,15 +92,19 @@ class graph_data():
 
     def get_grouped_figures(self, figure:int=None, coord:tuple[int,int,int,int]=None):
         if figure:
-            print(f"figure in g.get_grouped_figures: {figure}")
+           # print(f"figure in g.get_grouped_figures: {figure}")
             matches = list(i for i in self.figure_data if i.id == figure)
             if matches:
-                print(f"Matches: {matches}")
+                #print(f"Matches: {matches}")
                 figure = matches[0]
 
-            grouped = list(i.id for i in self.figure_data if i.group == figure.group)
-            print(f"grouped before return: {grouped}")
-            return grouped
+                #grouped = list(i.id for i in self.figure_data if i.group == figure.group)
+                grouped = list(i for i in self.figure_data if i.group == figure.group)
+                # now returns the figure_data objects instead of ids, so I can use it later for merging groups etc.
+                #print(f"grouped before return: {grouped}")
+                return grouped
+            else:
+                print(f"No matches for {figure} in get_grouped. Maybe an error, maybe not.")
 
     def move_grouped_figure(self, figure:int):
         pass
@@ -119,15 +124,6 @@ def make_window():
 
     #def set_ratio(ratio=(1,1)):
         #return [sg.InputText(default_text=str(ratio[0]), size=(2,1)), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(ratio[1]), size=(2,1))]
-    def bbox_width_and_height(bbox) -> tuple[float, float]:
-        left, top, right, bottom = bbox
-        width = right - left
-        height = bottom - top
-        return width, height
-
-    def get_half_dimensions(bbox):
-        width, height = bbox_width_and_height(bbox)
-        return int(width/2), int(height/2)
 
     def move(target_loc):
         for fig in g.temp_figures:
@@ -137,90 +133,72 @@ def make_window():
         if not g.selected_figure:
             print("No selected figure, cannot move.")
             return []
-        print(f"Figure to move: {g.selected_figure}")
 
-        #graph.relocate_figure(g.selected_figure, target_loc[0], target_loc[1])
-#   implement group moving here.
-        """
-move target to centre of figure bbox, not top left.
-repeat targeting for all members of group.
-
-
-7:15am 24/6/26
-how did I solve this last time:
-  File "..\FreeSimpleGUI\elements\graph.py", line 636, in relocate_figure
-    self._TKCanvas2.move(figure, shift_converted[0] - xy[0], shift_converted[1] - xy[1])
-??
-Uncommenting the graph.relocate_figure above still works, so it's not a general issue. Maybe just the target lock doesn't... apply? Or am I giving it the wrong 'fig'? It needs the int, what am I giving it...
-
-Okay! fixed it. Yes, I was giving it the wrong fig. Fixed now.
-They all congregate at the top left, but that's fine; they're all centred anyway, so i just need to recenter all figs before relocating. Will get the util script out and reuse the relevant bit.
-"""
-
-        print(f"About to get grouped from g.current_figure `{g.selected_figure}`")
         grouped = g.get_grouped_figures(g.selected_figure)
-        # grouping works now. (grouped movement, no, but the grouping, yes.)
         if not grouped:
             print(f"No grouped items for current figure ({g.selected_figure})")
             return []
+
         for fig in grouped:
-            print(f"to move: {fig}")
-            centred = bb.centre_on_target(subject=g.canvas.bbox(fig), target=target_loc, target_is_point=True)
-            graph.relocate_figure(fig, centred[0], centred[1])
 
-#        doesn't work for text. It aligns the top left of the text to the value given, regardless being centred like everything else. idk if relocate_figure actually treats text different or if it's on my end, will have to look into it.
+            bounding_box = g.graph.get_bounding_box(fig.id)
+            centred = bb.centre_on_target(subject=bounding_box, target=target_loc, target_is_point=True)
 
+            configs = g.canvas.itemconfig(fig.id) ## TODO: find a better way of determining text figures. .Type doesn't work on figures, only on true elements.
+            if "text" in configs:
+                    # text needs to be moved down + across to be properly centred. Not sure why only that, but this does fix it. Will look into why.
+                    width, height = bb.bbox_width_and_height(centred)
+                    centred = centred[0]+(width/2)-2, centred[1]+height/2-2, centred[2]+(width/2)-2, centred[3]+(height/2)-2
+                    # does actually correctly centre. Now all three parts act together as one. plenty of room for improvement but it's something.
 
-## Initial attempt with default centering: the text needs to be half-width across and half-width down, but otherwise it works! Also the centering is much better with that fn, need to redo the initial move to use this like I wanted to originally.
-
-
-        # For two: It moves to the top left, so if yo click something to start moving from the middle, you've moved the the top left of the thing to centre.
-        #graph.delete_figure(g.selected_figure)
-        #g.selected_figure = temp
-
-        #graph.RelocateFigure(g.selected_figure, target_loc[0], target_loc[1])
+            graph.relocate_figure(fig.id, centred[0], centred[1])
 
 
-
-    def draw(current_figure, temp=False):
-        def add_text_to_figure_centre(figure):
+    def draw(current_drawing_xy, temp=False):
+        def add_text_to_figure_centre(figure, current_coords):
         #g.canvas.find_enclosed()
         #g.canvas.find_closest()
 
-            x, y = get_half_dimensions(g.canvas.bbox(figure))
-            a, b = current_figure[0]
-            ### currently places the text at text(0,0) to figure centre, instead of text centre to text centre.
-            x += a
-            y += b
-            text = graph.draw_text(text=values["add_text"], location=(x,y))
-            fig_1 = add_figure(text)
-            text_x, text_y = get_half_dimensions(g.canvas.bbox(text))
+            text = graph.draw_text(text=values["add_text"], location=(current_coords[-1]))
+            new_text_bbox = bb.centre_on_target(subject=g.canvas.bbox(text), target=g.canvas.bbox(figure))
+            half_text_w = (new_text_bbox[2] - new_text_bbox[0])/2
+            half_text_h = (new_text_bbox[3] - new_text_bbox[1])/2
 
-            rect = graph.draw_rectangle(top_left=(g.canvas.bbox(text)[0]-text_x/2, g.canvas.bbox(text)[1]-text_y/2), bottom_right=(g.canvas.bbox(text)[2], g.canvas.bbox(text)[3]), fill_color="white")
+            graph.relocate_figure(text, new_text_bbox[0] + half_text_w, new_text_bbox[1] + half_text_h)
+            fig_1 = add_figure(text)
+
+            top_left = g.canvas.bbox(text)[0]-5, g.canvas.bbox(text)[1]-5
+            bottom_right = g.canvas.bbox(text)[2]+5, g.canvas.bbox(text)[3]+5
+
+            centred_rectangle = bb.centre_on_target(subject=(top_left, bottom_right), target=g.canvas.bbox(figure))
+            rect = graph.draw_rectangle(top_left=(centred_rectangle[0], centred_rectangle[1]), bottom_right=(centred_rectangle[2], centred_rectangle[3]), fill_color="white", line_color=g.lighter_line_colour)
             fig_2 = add_figure(rect)
-## I want to tie the text and background rectangle together. And to be able to edit the text.
-### TODO: need grouping, asap.
-            graph.relocate_figure(text, x-text_x/8, y-text_y/4)
 
             graph.bring_figure_to_front(text)
 
             return fig_1, fig_2
 
-        #if temp:
-        for fig in g.temp_figures:
-            g.graph.delete_figure(fig)
-            g.temp_figures = []
+        if g.temp_figures:
+            for fig in g.temp_figures:
+                g.graph.delete_figure(fig)
+                g.temp_figures = []
 
         if w.active_tool == "rectangle":
-            figure = g.graph.draw_rectangle(top_left=current_figure[0], bottom_right=current_figure[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
-            print(f"DREW A RECTANGLE: {figure}")
+            figure = g.graph.draw_rectangle(top_left=current_drawing_xy[0], bottom_right=current_drawing_xy[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
+            if w.testing:
+                a = g.graph.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width = g.line_width)
+                b = g.graph.draw_line(point_from=(current_drawing_xy[0][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[1][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
+                c = g.graph.draw_line(point_from=(current_drawing_xy[1][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[0][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
+
+                for x in (a,b,c):
+                    g.temp_figures.append(x)
+
             if temp:
                 g.temp_figures.append(figure)
             else:
                 fig = add_figure(figure)
-                print("Added figure")
-                if window["add_text"]:
-                    figs = add_text_to_figure_centre(figure)
+                if values["add_text"]:
+                    figs = add_text_to_figure_centre(figure, current_drawing_xy)
                     figs[1].group_leader=True
                     fig.group = figs[0].group = figs[1].group = figs[1].id
                     for f in fig, figs[0], figs[1]:
@@ -229,15 +207,13 @@ They all congregate at the top left, but that's fine; they're all centred anyway
                     fig.group_leader = True
                     fig.group = fig.id
                 g.selected_figure = figure
-                print(f"non temp rectangle: {figure})")
-                #return fig, figs[0],
 
 
         elif w.active_tool == "circle":
             import math
-            d = math.sqrt((current_figure[1][0] - current_figure[0][0])**2 + (current_figure[1][1] - current_figure[0][1])**2) # for properly round circles.
+            d = math.sqrt((current_drawing_xy[1][0] - current_drawing_xy[0][0])**2 + (current_drawing_xy[1][1] - current_drawing_xy[0][1])**2) # for properly round circles.
 
-            figure = g.graph.draw_oval(top_left=current_figure[0], bottom_right=current_figure[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
+            figure = g.graph.draw_oval(top_left=current_drawing_xy[0], bottom_right=current_drawing_xy[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
             #figure = g.graph.draw_circle(center_location=current_figure[0], radius=d, fill_color=g.fill_colour, line_color=g.line_colour)
             if temp:
                 g.temp_figures.append(figure)
@@ -245,10 +221,10 @@ They all congregate at the top left, but that's fine; they're all centred anyway
                 #g.figures.append(figure)
                 g.selected_figure = figure
                 if values.get("add_text"):
-                    add_text_to_figure_centre(figure)
+                    add_text_to_figure_centre(figure, current_drawing_xy)
 
         elif w.active_tool == "line":
-            figure = g.graph.draw_line(point_from=current_figure[0], point_to=current_figure[1], color=g.line_colour, width=g.line_width)
+            figure = g.graph.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width=g.line_width)
             if temp:
                 g.temp_figures.append(figure)
             else:
@@ -257,13 +233,15 @@ They all congregate at the top left, but that's fine; they're all centred anyway
                     if not temp:
                         g.selected_figure = figure
                         if values.get("add_text"):
-                            add_text_to_figure_centre(figure)
-                        return list((current_figure[1],))
+                            add_text_to_figure_centre(figure, current_drawing_xy)
+                        return list((current_drawing_xy[1],))
                 else:
+                    figures_at_start = g.graph.get_figures_at_location(current_drawing_xy[0])
+                    figures_at_end = g.graph.get_figures_at_location(current_drawing_xy[1])
                     g.figures.append(figure)
                     g.selected_figure = figure
                     if values.get("add_text"):
-                        add_text_to_figure_centre(figure)
+                        add_text_to_figure_centre(figure, current_drawing_xy)
 
         return []
 
@@ -278,10 +256,6 @@ They all congregate at the top left, but that's fine; they're all centred anyway
         print(f"g.canvas coords for newly selected figure: {g.canvas.coords(figure)} / figure: {figure}")
         g.selected_figure = figure
         g.selected_coords = g.canvas.coords(figure)
-
-
-
-
 
 
     def update_ratio(event, values):
@@ -327,7 +301,7 @@ They all congregate at the top left, but that's fine; they're all centred anyway
                 window[panel].update(visible=True)
             else:
                 window[panel].hide_row()
-        #window.refresh()
+
         if w.show_ratio and event in ("rectangle", "circle"): # the two that do have set_ratio; need to make this automatic later.
             show_set_ratio(force_visible=True)
         else:
@@ -347,9 +321,6 @@ They all congregate at the top left, but that's fine; they're all centred anyway
         #return [sg.Button(button_text=button_name, key=button_name.replace(" ","_").lower())],
 # TODO: make placeholder images for header buttons ( + button panel buttons later too)
         return sg.Button(button_text=button_name, key=button_name.replace(" ","_").lower())
-
-
-#     top bar: New, Undo, Redo, Save, Save As, Settings/Change Defaults
 
 
     def tool_options():
@@ -385,7 +356,7 @@ They all congregate at the top left, but that's fine; they're all centred anyway
             [circle_buttons],
             [line_buttons],
 
-        ])], [sg.Column(layout=[[sg.Column(layout=[[sg.InputText(default_text=str(w.ratio[0]), size=(2,1), key="ratio_part_1", enable_events=True), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(w.ratio[1]), size=(2,1), key="ratio_part_2", enable_events=True)]], visible=False, key="set_ratio_column", pad=0)]])], [sg.Text("Element text:")],[sg.InputText(default_text='', key="add_text")]]
+        ])], [sg.Column(layout=[[sg.Column(layout=[[sg.InputText(default_text=str(w.ratio[0]), size=(2,1), key="ratio_part_1", enable_events=True), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(w.ratio[1]), size=(2,1), key="ratio_part_2", enable_events=True)]], visible=False, key="set_ratio_column", pad=0)]])], [sg.Text("Element text:")],[sg.InputText(default_text="testing", key="add_text")]] # TODO change "testing" to '' to default to None
 
 
     header_buttons = [
@@ -400,7 +371,7 @@ They all congregate at the top left, but that's fine; they're all centred anyway
         ]
 
     line_width = [
-        [simple_radio("line_width", "1"), simple_radio("line_width", "3", is_default_true=True), simple_radio("line_width", "5"), simple_radio("line_width", "7"), simple_radio("line_width", "9")]#, simple_radio("line_width", "edit_sizes")] # edit sizes should be per-button, not an addon, but it's here to remind me to do that.
+        [simple_radio("line_width", "1"), simple_radio("line_width", "3", is_default_true=True), simple_radio("line_width", "5"), simple_radio("line_width", "7"), simple_radio("line_width", "9")]
         ]
     copy_paste_etc = [
         [simple_button("copy"), simple_button("paste"), simple_button("duplicate"), simple_button("delete")]
@@ -421,14 +392,6 @@ They all congregate at the top left, but that's fine; they're all centred anyway
         graph, button_panel
         ]
 
-
-    """ Main screen:
-    Fullscreen but resizable.
-
-    Rest of window: graph, right side: rectangle-type selector column. Line thickness column.
-
-    """
-
     main_frame = [
         header,
         body
@@ -446,6 +409,7 @@ They all congregate at the top left, but that's fine; they're all centred anyway
         select_tool(w.active_tool)
         g.graph = window["graph"] ## type: sg.Graph
         g.canvas = window["graph"].Widget
+
 
     setup_window()
     g.currently_adding_figure = []
@@ -470,7 +434,6 @@ They all congregate at the top left, but that's fine; they're all centred anyway
                     if event == "graph+UP":
                         g.currently_adding_figure.append(values["graph"])
                         g.currently_adding_figure = draw(g.currently_adding_figure)
-            # just realised I need to break up 'current figure' from 'selected'. 'current figure' is more of 'the one I'm currently making', which may or may not be the selected one. Going to rename and fix this now.
 
                     else:
                         if not g.currently_adding_figure:
@@ -490,15 +453,6 @@ They all congregate at the top left, but that's fine; they're all centred anyway
                     elif w.active_tool == "move" and g.selected_figure:
                         #if event == "graph+UP":
                         move(values["graph"])
-
-                        """else:
-                            if not g.current_figure:
-                                g.move_figure.append(values["graph"])
-
-                            else:
-                                ending = values["graph"]
-                                draw((g.move_figure[0], ending), temp=True)
-"""
 
             elif g.currently_adding_figure:
                 g.currently_adding_figure = []#= draw(g.current_figure) # so that if you click anything non-graph while drawing a polygon, it just ends drawing that polygon.
@@ -520,11 +474,8 @@ They all congregate at the top left, but that's fine; they're all centred anyway
             elif event in ("ratio_part_1", "ratio_part_2"):
                 update_ratio(event, values)
 
-
-
             else:
                 print(f"EVENT: `{event}`")# / values: `{values}`")
-
 
 
 def setup():
