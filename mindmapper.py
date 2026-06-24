@@ -85,13 +85,16 @@ class graph_data():
 
         self.selection_area = []
         self.selected_figure:int = None
-        self.selected_coords:list[int] = []
+        #self.selected_coords:list[int] = []
+
+        self.node_links:dict[int:dict] = {}
 
     def clear_all(self):
         self.figures = []
 
     def get_grouped_figures(self, figure:int=None, coord:tuple[int,int,int,int]=None):
         if figure:
+
            # print(f"figure in g.get_grouped_figures: {figure}")
             matches = list(i for i in self.figure_data if i.id == figure)
             if matches:
@@ -102,12 +105,11 @@ class graph_data():
                 grouped = list(i for i in self.figure_data if i.group == figure.group)
                 # now returns the figure_data objects instead of ids, so I can use it later for merging groups etc.
                 #print(f"grouped before return: {grouped}")
+                #print(f"GROUPED in get_grouped_figures: {list(i.id for i in grouped)}")
                 return grouped
             else:
                 print(f"No matches for {figure} in get_grouped. Maybe an error, maybe not.")
 
-    def move_grouped_figure(self, figure:int):
-        pass
 
 
 g = graph_data()
@@ -115,7 +117,7 @@ g = graph_data()
 def add_figure(figure):
     #g.figures.append(figure)
     fig = figure_data(figure)
-    print(f"Added {figure} to figure_data.")
+    #print(f"Added {figure} to figure_data.")
     g.figure_data.append(fig)
     return fig
 
@@ -124,8 +126,13 @@ def make_window():
 
     #def set_ratio(ratio=(1,1)):
         #return [sg.InputText(default_text=str(ratio[0]), size=(2,1)), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(ratio[1]), size=(2,1))]
+    def get_grouped(figure_id):
+        print("gettags: ", g.canvas.gettags(figure_id))
+        print(f"g.graph: {g.canvas.find_withtag("main_figure")}") # always the second; first is element-type (text, main rect, text rect.) # works to find the type tag so still have some use, but 'find_withtag' only ever returns self. Need to look into it.
 
-    def move(target_loc):
+
+    def move(target_loc, exclude_text=False):
+        """ Now immediately jumps to the mouse, so works with single click or a drag. (the print lines get out of hand when dragging but I'll kill those later.) """
         for fig in g.temp_figures:
             g.graph.delete_figure(fig)
         g.temp_figures = []
@@ -135,18 +142,25 @@ def make_window():
             return []
 
         grouped = g.get_grouped_figures(g.selected_figure)
-        if not grouped:
-            print(f"No grouped items for current figure ({g.selected_figure})")
-            return []
+
+
+        if not grouped or exclude_text: # now only moves the text/rectangle on mouseup, but moves the main shape the whole time. Just think it looks nicer as it moves.
+
+            centred = bb.centre_on_target(subject=g.canvas.bbox(g.selected_figure), target=target_loc, target_is_point=True)
+            graph.relocate_figure(g.selected_figure, centred[0], centred[1])
+            return [[g.selected_figure]]
+
 
         for fig in grouped:
 
             bounding_box = g.graph.get_bounding_box(fig.id)
             centred = bb.centre_on_target(subject=bounding_box, target=target_loc, target_is_point=True)
 
-            configs = g.canvas.itemconfig(fig.id) ## TODO: find a better way of determining text figures. .Type doesn't work on figures, only on true elements.
-            if "text" in configs:
-                    # text needs to be moved down + across to be properly centred. Not sure why only that, but this does fix it. Will look into why.
+            #print(f"fig in grouped: {fig.id} / all with tag g.selected_figure: ", g.canvas.find_withtag("text")) # This works to get certain types. As long as I've named them on init ofc.
+
+            if fig.id in g.canvas.find_withtag("text"):
+            #configs = g.canvas.itemconfig(fig.id)
+            #if "text" in configs:
                     width, height = bb.bbox_width_and_height(centred)
                     centred = centred[0]+(width/2)-2, centred[1]+height/2-2, centred[2]+(width/2)-2, centred[3]+(height/2)-2
                     # does actually correctly centre. Now all three parts act together as one. plenty of room for improvement but it's something.
@@ -166,6 +180,7 @@ def make_window():
 
             graph.relocate_figure(text, new_text_bbox[0] + half_text_w, new_text_bbox[1] + half_text_h)
             fig_1 = add_figure(text)
+            g.canvas.itemconfig(text, {"tags": [["text"], [figure]]})
 
             top_left = g.canvas.bbox(text)[0]-5, g.canvas.bbox(text)[1]-5
             bottom_right = g.canvas.bbox(text)[2]+5, g.canvas.bbox(text)[3]+5
@@ -173,6 +188,7 @@ def make_window():
             centred_rectangle = bb.centre_on_target(subject=(top_left, bottom_right), target=g.canvas.bbox(figure))
             rect = graph.draw_rectangle(top_left=(centred_rectangle[0], centred_rectangle[1]), bottom_right=(centred_rectangle[2], centred_rectangle[3]), fill_color="white", line_color=g.lighter_line_colour)
             fig_2 = add_figure(rect)
+            g.canvas.itemconfig(rect, {"tags": [["sml_rect"], [figure]]})
 
             graph.bring_figure_to_front(text)
 
@@ -197,12 +213,13 @@ def make_window():
                 g.temp_figures.append(figure)
             else:
                 fig = add_figure(figure)
+                g.canvas.itemconfig(fig.id, {"tags": [["main_figure"], [str(fig.id)]]})
                 if values["add_text"]:
                     figs = add_text_to_figure_centre(figure, current_drawing_xy)
                     figs[1].group_leader=True
                     fig.group = figs[0].group = figs[1].group = figs[1].id
-                    for f in fig, figs[0], figs[1]:
-                        print(f"Group for {f.id}: {f.group}. Is group leader: {f.group_leader}")
+                    #for f in fig, figs[0], figs[1]:
+                    #    print(f"Group for {f.id}: {f.group}. Is group leader: {f.group_leader}")
                 else:
                     fig.group_leader = True
                     fig.group = fig.id
@@ -236,8 +253,34 @@ def make_window():
                             add_text_to_figure_centre(figure, current_drawing_xy)
                         return list((current_drawing_xy[1],))
                 else:
-                    figures_at_start = g.graph.get_figures_at_location(current_drawing_xy[0])
-                    figures_at_end = g.graph.get_figures_at_location(current_drawing_xy[1])
+                    if values.get("attach_line_to_node"):
+                        #figures_at_start = g.graph.get_figures_at_location(current_drawing_xy[0])
+                        #if figures_at_start:
+                        #    figures_at_start = list(i for i in figures_at_start if g.canvas.find_withtag("main_rectangle"))
+                        #    print(f"Figures at start: {figures_at_start}")
+                        #    if figures_at_start:
+                        #        print("found the main rectangle this line is 'joining'.")
+                        #        figures_at_start = figures_at_start[0]
+
+                        overlapping = g.canvas.find_overlapping(current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10, current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10)
+                        print(f"OVERLAPPING: {overlapping}")
+                        overlapping = list(i for i in overlapping if g.canvas.find_withtag("main_figure"))
+                        #for lap in overlapping:
+                        if len(overlapping) == 2:
+                            print("Assume first and second (drag order will matter here.)")
+
+
+                        print(f"OVERLAPPING shortlist: {overlapping}")
+                        figures_at_end = g.graph.get_figures_at_location(current_drawing_xy[-1])
+
+                    #if window["attach_line_to_node"]
+                    #g.canvas.
+                    #print(f'window["attach_line_to_node"]: {window["attach_line_to_node"].__getstate__()}')
+                    #print(f'window["attach_line_to_node"]: {window["attach_line_to_node"].Widget}')
+
+                    #chexkbox = window["attach_line_to_node"].Widget
+                    #print(chexkbox.__dir__())
+                    #chexkbox.flash
                     g.figures.append(figure)
                     g.selected_figure = figure
                     if values.get("add_text"):
@@ -250,12 +293,11 @@ def make_window():
         if not figures:
             print("No figures at location.")
             return
-        print(f"Figures at this location: {figures}")
+        #print(f"Figures at this location: {figures}")
         figure = figures[0] if figures else None
 
-        print(f"g.canvas coords for newly selected figure: {g.canvas.coords(figure)} / figure: {figure}")
+        #print(f"g.canvas coords for newly selected figure: {g.canvas.coords(figure)} / figure: {figure}")
         g.selected_figure = figure
-        g.selected_coords = g.canvas.coords(figure)
 
 
     def update_ratio(event, values):
@@ -308,7 +350,6 @@ def make_window():
             show_set_ratio(force_hidden=True)
 
 
-
     def simple_radio(group="select_tool", button_name:str="select", is_default_true=False):
         if len(button_name) == 1:
             key = group + button_name
@@ -348,7 +389,7 @@ def make_window():
 
         circle_buttons = sg.Column(layout=[[sg.Checkbox(text="set ratio", default=False, enable_events=True, key="set_ratio_circ", tooltip="Does nothing yet...")]], key="tool_buttons_circle", visible=False)
 
-        line_buttons = sg.Column(layout=[[simple_radio(group="line", button_name="single line", is_default_true=True), simple_radio(group="line", button_name="polygon"), sg.Button(button_text="close_polygon", enable_events=True, key="close_polygon")]], key="tool_buttons_line", visible=False)
+        line_buttons = sg.Column(layout=[[simple_radio(group="line", button_name="single line", is_default_true=True), sg.Checkbox(text="attach to node", default=True, key="attach_line_to_node", enable_events=True)], [simple_radio(group="line", button_name="polygon"), sg.Button(button_text="close_polygon", enable_events=True, key="close_polygon")]], key="tool_buttons_line", visible=False)
 
         return [[sg.Column(layout=[
             [select_buttons],
@@ -426,7 +467,7 @@ def make_window():
                 window.close()
                 return "restart"
 
-
+            #print(f"EVENT: {event}")
             if event.startswith("graph"):
 
                 if w.active_tool in ("rectangle", "circle", "line"):
@@ -451,14 +492,18 @@ def make_window():
                     #    g.canvas.find_enclosed()
 
                     elif w.active_tool == "move" and g.selected_figure:
-                        #if event == "graph+UP":
-                        move(values["graph"])
+                        if event == "graph":
+                            move(values["graph"], exclude_text=True)
+                        if event == "graph+UP":
+                            print("graph UP")
+                            move(values["graph"])
+
+
 
             elif g.currently_adding_figure:
                 g.currently_adding_figure = []#= draw(g.current_figure) # so that if you click anything non-graph while drawing a polygon, it just ends drawing that polygon.
 
             elif event in ("rectangle", "circle", "line", "select", "move"):
-                print(f"EVENT: {event}")
                 select_tool(event)
 
             elif event.startswith("line_width"):
