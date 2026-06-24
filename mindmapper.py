@@ -136,9 +136,8 @@ class graph_data():
 
 
     def get_grouped_figures(self, pointer:int=None, coord:tuple[int,int,int,int]=None) -> list[figure_data]:
-        print(f"Pointer in get_grouped_figures: {pointer}")
-        if pointer:
 
+        if pointer:
            # print(f"figure in g.get_grouped_figures: {figure}")
             matches = list(i for i in self.pointer_index if i == pointer)
             if matches:
@@ -255,16 +254,14 @@ def make_window():
             #connections[line_figure_id] = {"fromnode": fromnode.id, "from_coordinate": (line_start_xy), "tonode": tonode.id, "to_coordinate": (line_end_xy)}
 
 
-
-        def get_survivor(line_start, line_end):
+        def draw_newline(existing_line_instance, line_start, line_end):# -> tuple[None, list]:
 
             new_line = g.graph_access.draw_line(line_start, line_end, color=line_col, width=line_width)
 
             g.temp_figures.append(new_line)
-            survivor = new_line
-            done_links.append(line)
+            done_links.append(existing_line_instance.pointer)
 
-            return survivor, done_links
+            return new_line, done_links
 
         g.clear_temp_figures()
 
@@ -273,7 +270,7 @@ def make_window():
             return []
 
         grouped = g.get_grouped_figures(g.selected_figure)
-        print(f"Grouped: {grouped}")
+        #print(f"Grouped: {grouped}")
 
 
         if not grouped:# or exclude_text: # now only moves the text/rectangle on mouseup, but moves the main shape the whole time. Just think it looks nicer as it moves.
@@ -282,52 +279,68 @@ def make_window():
             graph.relocate_figure(g.selected_figure, centred[0], centred[1])
             return [[g.selected_figure]]
 
-        survivor = None
-        done_links = []
+        survivor = None # figure_id
+        done_links = [] # pointer ids
         for fig in grouped:
-            if fig.connections:# and not exclude_text:
-#    Fig in overlaps: ``[ID: 339 / group: 344 / connections: {462: {'fromnode': 181, 'from_coordinate': (591, 140), 'tonode': 339, 'to_coordinate': (196, 185)}}]``
+            if fig.connections and not exclude_text:
                 linkage = list(fig.connections.keys())
-                """
-Okay so: currently, it /does/ move the node as expected, and technically moves the line, but it moves it entirely instead of maintaining the start vert and only once, after which it just sits there (because clearly I wiped something too early and it got lost). Still... progress? God it's too hot.
 
-                """
                 if linkage:
                     for line in linkage:
+                        if line in done_links:
+                            continue
                         print(f"LINE: {line}")
+                        line_instance = g.get_fig_instance_by_id_or_pointer(line)
+
+                        if not line_instance:
+                            print("No line instance in def move ln 293")
+                        if done_links and line_instance.figure_id in done_links:
+                            continue
                         _, line_col, line_width = get_colour_data(line)
                         remain_vert = move_vert = None
-                        if done_links and line in done_links:
-                            continue
-                        line_xy = g.canvas.coords(line)
-                        if not line_xy:
-                            print("maybe assume it already worked? (temporarily)")
-                            continue
-                        print(f"fig.connections[line]: {fig.connections[line]}")
-                        if fig.connections[line]["tonode"] == fig.figure_id:
-                            move_vert = target_loc # LINE XY: [549.0, 154.0, 734.0, 146.0]
-                            print(f"line_xy: {line_xy}")
-                            remain_vert = line_xy[0], line_xy[1]
-                            survivor, done_links = get_survivor(line_start=remain_vert, line_end=move_vert)
 
-                        elif fig.connections[line]["fromnode"] == fig.figure_id:
+                        #line_xy = g.canvas.coords(line_instance.figure_id)
+                        #if not line_xy:
+                            #print("maybe assume it already worked? (temporarily)")
+                            #continue
+                        #print(f"fig.connections[line]: {fig.connections[line]}")
+                        if fig.connections[line]["tonode"] == fig.pointer:
+                            print("tonode == pointer")
+
+                            #print(f"line_xy: {line_xy}")
                             move_vert = target_loc # LINE XY: [549.0, 154.0, 734.0, 146.0]
-                            remain_vert = line_xy[2], line_xy[3]
-                            survivor, done_links = get_survivor(line_start=move_vert, line_end=remain_vert)
+                            remain_vert = fig.connections[line]["from_coordinate"]#line_xy[0], line_xy[1]
+                            print(f"remain_vert: {remain_vert} / move_vert: {move_vert}")
+                            survivor, done_links = draw_newline(line_instance, line_start=move_vert, line_end=remain_vert)
+                            #survivor, done_links = draw_newline(line_instance, line_start=remain_vert, line_end=move_vert)
+
+#   Only issue now: it stil doesn't remove  the original line.
+# also the code's a mess but what's new.
+# also the text is uncentred again, I need to find a(nother) better way of accessing the types.
+
+                        #elif fig.connections[line]["fromnode"] == fig.pointer:
+                        #    print("fromnode == pointer")
+                        #    move_vert = target_loc # LINE XY: [549.0, 154.0, 734.0, 146.0]
+                        #    remain_vert = line_xy[2], line_xy[3]
+                        #    survivor, done_links = draw_newline(line_instance.figure_id, line_start=move_vert, line_end=remain_vert)
                             #new_line = g.graph_access.draw_line(move_vert, remain_vert, color=line_col, width=line_width)
                             #g.temp_figures.append(new_line)
                             #survivor = new_line
                             #done_links.append(line)
                             #print("and what, just... replace all the instances? Bleh.")
 
-
-            """if survivor:
+# now only keeps the current line.
+            if survivor:
+                g.remove_figure(line_instance.figure_id)
                 g.remove_figure(line)
-                fig = add_figure(survivor)
-                if survivor in g.temp_figures:
-                    g.temp_figures.remove(survivor)"""
+                add_figure(survivor)
+                g.graph_access.send_figure_to_back(survivor)
+                #if survivor in g.temp_figures:
+                    #g.temp_figures.remove(survivor)
+            #if survivor:
+            #    fig = add_figure(survivor)
+            #    fig.pointer =
 
-            print(f"FIG just before get bounding box: {fig}")
 
             bounding_box = g.graph_access.get_bounding_box(fig.figure_id)
             centred = bb.centre_on_target(subject=bounding_box, target=target_loc, target_is_point=True)
@@ -343,13 +356,14 @@ Okay so: currently, it /does/ move the node as expected, and technically moves t
 
             graph.relocate_figure(fig.figure_id, centred[0], centred[1])
 
-        for line in done_links:
-            g.remove_figure(line)
-            print("here we add the updated connection data")
+        #for line in done_links:
+        #    g.remove_figure(line)
+        #    print("here we add the updated connection data")
+#
+        #    fig = add_figure(survivor)
 
-            fig = add_figure(survivor)
-        if survivor in g.temp_figures:
-            g.temp_figures.remove(survivor)
+        #if survivor in g.temp_figures:
+            #g.temp_figures.remove(survivor)
 
         if g.temp_figures:
             for figure in g.temp_figures:
@@ -375,6 +389,9 @@ Okay so: currently, it /does/ move the node as expected, and technically moves t
         def add_text_to_figure_centre(figure_id, current_coords):
         #g.canvas.find_enclosed()
         #g.canvas.find_closest()
+            if isinstance(figure_id, figure_data):
+                figure_id = figure_id.figure_id
+
             leader_instance = g.get_fig_instance_by_id_or_pointer(figure_id)
             leader_instance.group_leader=True
             leader_instance.group=leader_instance.pointer
@@ -406,8 +423,8 @@ Okay so: currently, it /does/ move the node as expected, and technically moves t
             return text_instance, text_bg_instance
 
         if g.temp_figures:
-            for fig in g.temp_figures:
-                g.graph_access.delete_figure(fig)
+            for figure_id in g.temp_figures:
+                g.graph_access.delete_figure(figure_id)
                 g.temp_figures = []
 
         if w.active_tool == "rectangle":
@@ -423,18 +440,18 @@ Okay so: currently, it /does/ move the node as expected, and technically moves t
             if temp:
                 g.temp_figures.append(figure_id)
             else:
-                fig = add_figure(figure_id)
+                figure_instance = add_figure(figure_id)
                 if values["add_text"]:
-                    figs = add_text_to_figure_centre(figure_id, current_drawing_xy)
+                    figs = add_text_to_figure_centre(figure_instance.figure_id, current_drawing_xy)
                     print(f"FIGS: {figs}")
                     #figs[1].group_leader=True
                     #fig.group = figs[0].group = figs[1].group = figs[1].pointer
                     #for f in fig, figs[0], figs[1]:
                     #    print(f"Group for {f.id}: {f.group}. Is group leader: {f.group_leader}")
                 else:
-                    fig.group_leader = True
-                    fig.group = fig.pointer
-                g.selected_figure = fig.pointer
+                    figure_instance.group_leader = True
+                    figure_instance.group = figure_instance.pointer
+                g.selected_figure = figure_instance.pointer
 
 
         elif w.active_tool == "circle":
@@ -454,28 +471,18 @@ Okay so: currently, it /does/ move the node as expected, and technically moves t
         elif w.active_tool == "line":
 
             figure_id = g.graph_access.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width=g.line_width)
+            figure_instance = add_figure(figure_id)
             if temp:
                 g.temp_figures.append(figure_id)
             else:
                 if g.line_type == "polygon": # note: this way of doing polygons doesn't work because you can't move them, selecting selects a specific line, not the full polygon obj.
                     print("Ignore polygons for now.")
                     if not temp:
-                        g.selected_figure = figure_id
+                        g.selected_figure = figure_instance.pointer
                         if values.get("add_text"):
                             add_text_to_figure_centre(figure_id, current_drawing_xy)
                         return list((current_drawing_xy[1],))
                 else:
-
-
-                    #if window["attach_line_to_node"]
-                    #g.canvas.
-                    #print(f'window["attach_line_to_node"]: {window["attach_line_to_node"].__getstate__()}')
-                    #print(f'window["attach_line_to_node"]: {window["attach_line_to_node"].Widget}')
-
-                    #chexkbox = window["attach_line_to_node"].Widget
-                    #print(chexkbox.__dir__())
-                    #chexkbox.flash
-                    figure_instance = add_figure(figure_id)
                     g.selected_figure = figure_instance.pointer
 
                     if values.get("attach_line_to_node"):
@@ -484,7 +491,7 @@ Okay so: currently, it /does/ move the node as expected, and technically moves t
                         if overlapping_start:
                             # ALSO: need to be able to un/redo this if I move a line later. Adapt it so it's reusable and not reliant on being init.
                             print(f"OVERLAPPING start: {overlapping_start}")
-                            overlapping_start = list(i for i in overlapping_start if g.canvas.find_withtag("main_figure") and i != figure_id)
+                            overlapping_start = list(i for i in overlapping_start if g.get_fig_instance_by_id_or_pointer(figure_id=i) and i != figure_id)
                             if overlapping_start:
                                 print(f"Start option(s) found: {overlapping_start}")
                                 overlapping_start = overlapping_start[0]
@@ -492,11 +499,11 @@ Okay so: currently, it /does/ move the node as expected, and technically moves t
                                 overlapping_start = None
 
                         overlapping_end = g.canvas.find_overlapping(current_drawing_xy[1][0]-10, current_drawing_xy[1][1]-10, current_drawing_xy[1][0]+10, current_drawing_xy[1][1]+10)
-                        #g.graph_access.draw_rectangle((current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10), (current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10), fill_color="blue") # just checking how big the selection box is, this is fine.
+                        g.graph_access.draw_rectangle((current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10), (current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10), fill_color="blue") # just checking how big the selection box is, this is fine.
                         if overlapping_end:
                             # ALSO: need to be able to un/redo this if I move a line later. Adapt it so it's reusable and not reliant on being init.
                             print(f"OVERLAPPING end: {overlapping_end}")
-                            overlapping_end = list(i for i in overlapping_end if g.canvas.find_withtag("main_figure") and i != figure_id)
+                            overlapping_end = list(i for i in overlapping_end if g.get_fig_instance_by_id_or_pointer(figure_id=i) and i != figure_id)
                             if overlapping_end:
                                 print(f"End option found: {overlapping_end}")
                                 overlapping_end = overlapping_end[0]
@@ -504,10 +511,11 @@ Okay so: currently, it /does/ move the node as expected, and technically moves t
                                 overlapping_end = None
 
                         if overlapping_start and overlapping_end:
-                            for fig in (overlapping_start, overlapping_end):
-                                fig_instance = g.get_fig_instance_by_id_or_pointer(fig)
-                                fig_instance.connections[fig_instance.pointer] =  {"fromnode": g.get_fig_instance_by_id_or_pointer(overlapping_start).pointer, "from_coordinate": (current_drawing_xy[0]), "tonode": g.get_fig_instance_by_id_or_pointer(overlapping_end).pointer, "to_coordinate": (current_drawing_xy[1])}
-                                print(f"Fig in overlaps: {fig_instance}")
+                            for f in (overlapping_start, overlapping_end):
+                                print(f"fig in overlapping start/end: {f}")
+                                f_instance = g.get_fig_instance_by_id_or_pointer(figure_id = f)
+                                f_instance.connections[figure_instance.pointer] =  {"fromnode": g.get_fig_instance_by_id_or_pointer(overlapping_start).pointer, "from_coordinate": (current_drawing_xy[0]), "tonode": g.get_fig_instance_by_id_or_pointer(overlapping_end).pointer, "to_coordinate": (current_drawing_xy[1])}
+                                print(f"Fig in overlaps: {f_instance}")
                                 #for lap in overlapping:
                                 """if len(overlapping_start) == 2:
                                     g.node_links[figure] = {"from_node": overlapping_start[0], "to_node": overlapping_start[1]}
@@ -697,7 +705,7 @@ Okay so: currently, it /does/ move the node as expected, and technically moves t
     g.currently_adding_figure = []
 
     while True and not window.is_closed():
-        event, values = window.read(2000)
+        event, values = window.read(3000)
         if event and event != "__TIMEOUT__":
 
             if (isinstance(event, str) and event.startswith("Escape")) or window.is_closed():
