@@ -2,6 +2,7 @@
 #"D:\Git_Repos\PIL-expanded\Scripts\Utilities\bbox_manip.py"
 import FreeSimpleGUI as sg
 from tkinter import Canvas
+import bbox_manip as bb
 
 #from ..PIL_expanded.Scripts.Utilities import bbox_manip
 
@@ -155,6 +156,7 @@ Uncommenting the graph.relocate_figure above still works, so it's not a general 
 Okay! fixed it. Yes, I was giving it the wrong fig. Fixed now.
 They all congregate at the top left, but that's fine; they're all centred anyway, so i just need to recenter all figs before relocating. Will get the util script out and reuse the relevant bit.
 """
+
         print(f"About to get grouped from g.current_figure `{g.selected_figure}`")
         grouped = g.get_grouped_figures(g.selected_figure)
         # grouping works now. (grouped movement, no, but the grouping, yes.)
@@ -163,8 +165,13 @@ They all congregate at the top left, but that's fine; they're all centred anyway
             return []
         for fig in grouped:
             print(f"to move: {fig}")
-            graph.relocate_figure(fig, target_loc[0], target_loc[1])
+            centred = bb.centre_on_target(subject=g.canvas.bbox(fig), target=target_loc, target_is_point=True)
+            graph.relocate_figure(fig, centred[0], centred[1])
 
+#        doesn't work for text. It aligns the top left of the text to the value given, regardless being centred like everything else. idk if relocate_figure actually treats text different or if it's on my end, will have to look into it.
+
+
+## Initial attempt with default centering: the text needs to be half-width across and half-width down, but otherwise it works! Also the centering is much better with that fn, need to redo the initial move to use this like I wanted to originally.
 
 
         # For two: It moves to the top left, so if yo click something to start moving from the middle, you've moved the the top left of the thing to centre.
@@ -189,7 +196,7 @@ They all congregate at the top left, but that's fine; they're all centred anyway
             fig_1 = add_figure(text)
             text_x, text_y = get_half_dimensions(g.canvas.bbox(text))
 
-            rect = graph.draw_rectangle(top_left=(g.canvas.bbox(text)[0]-text_x/4, g.canvas.bbox(text)[1]-text_y/2), bottom_right=(g.canvas.bbox(text)[2], g.canvas.bbox(text)[3]), fill_color="white")
+            rect = graph.draw_rectangle(top_left=(g.canvas.bbox(text)[0]-text_x/2, g.canvas.bbox(text)[1]-text_y/2), bottom_right=(g.canvas.bbox(text)[2], g.canvas.bbox(text)[3]), fill_color="white")
             fig_2 = add_figure(rect)
 ## I want to tie the text and background rectangle together. And to be able to edit the text.
 ### TODO: need grouping, asap.
