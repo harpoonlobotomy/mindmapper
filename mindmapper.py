@@ -55,12 +55,22 @@ class window_data:
 
 w = window_data()
 
+class figure_data():
+
+    def __init__(self, id, is_group_leader=False):
+        self.id=id
+        self.group:int = None
+        self.group_leader:bool = is_group_leader
+
 class graph_data():
 
     def __init__(self):
         self.graph:sg.Graph = None
         self.canvas:Canvas = "black"
         self.figures:list[int] = []
+
+        self.figure_data:list[figure_data] = []
+
         self.temp_figures:list[int] = []
 
         self.fill_colour:str = None
@@ -69,7 +79,7 @@ class graph_data():
         self.line_width = 3
         self.line_type = "single_line"
 
-        self.current_figure = []
+        self.currently_adding_figure = []
 
         self.selection_area = []
         self.selected_figure:int = None
@@ -78,8 +88,30 @@ class graph_data():
     def clear_all(self):
         self.figures = []
 
+    def get_grouped_figures(self, figure:int=None, coord:tuple[int,int,int,int]=None):
+        if figure:
+            print(f"figure in g.get_grouped_figures: {figure}")
+            matches = list(i for i in self.figure_data if i.id == figure)
+            if matches:
+                print(f"Matches: {matches}")
+                figure = matches[0]
+
+            grouped = list(i.id for i in self.figure_data if i.group == figure.group)
+            print(f"grouped before return: {grouped}")
+            return grouped
+
+    def move_grouped_figure(self, figure:int):
+        pass
+
+
 g = graph_data()
 
+def add_figure(figure):
+    #g.figures.append(figure)
+    fig = figure_data(figure)
+    print(f"Added {figure} to figure_data.")
+    g.figure_data.append(fig)
+    return fig
 
 def make_window():
 # back at it, 2:56pm
@@ -105,7 +137,36 @@ def make_window():
             print("No selected figure, cannot move.")
             return []
         print(f"Figure to move: {g.selected_figure}")
-        graph.relocate_figure(g.selected_figure, target_loc[0], target_loc[1])
+
+        #graph.relocate_figure(g.selected_figure, target_loc[0], target_loc[1])
+#   implement group moving here.
+        """
+move target to centre of figure bbox, not top left.
+repeat targeting for all members of group.
+
+
+7:15am 24/6/26
+how did I solve this last time:
+  File "..\FreeSimpleGUI\elements\graph.py", line 636, in relocate_figure
+    self._TKCanvas2.move(figure, shift_converted[0] - xy[0], shift_converted[1] - xy[1])
+??
+Uncommenting the graph.relocate_figure above still works, so it's not a general issue. Maybe just the target lock doesn't... apply? Or am I giving it the wrong 'fig'? It needs the int, what am I giving it...
+
+Okay! fixed it. Yes, I was giving it the wrong fig. Fixed now.
+They all congregate at the top left, but that's fine; they're all centred anyway, so i just need to recenter all figs before relocating. Will get the util script out and reuse the relevant bit.
+"""
+        print(f"About to get grouped from g.current_figure `{g.selected_figure}`")
+        grouped = g.get_grouped_figures(g.selected_figure)
+        # grouping works now. (grouped movement, no, but the grouping, yes.)
+        if not grouped:
+            print(f"No grouped items for current figure ({g.selected_figure})")
+            return []
+        for fig in grouped:
+            print(f"to move: {fig}")
+            graph.relocate_figure(fig, target_loc[0], target_loc[1])
+
+
+
         # For two: It moves to the top left, so if yo click something to start moving from the middle, you've moved the the top left of the thing to centre.
         #graph.delete_figure(g.selected_figure)
         #g.selected_figure = temp
@@ -125,14 +186,18 @@ def make_window():
             x += a
             y += b
             text = graph.draw_text(text=values["add_text"], location=(x,y))
+            fig_1 = add_figure(text)
             text_x, text_y = get_half_dimensions(g.canvas.bbox(text))
 
-            graph.draw_rectangle(top_left=(g.canvas.bbox(text)[0]-text_x/4, g.canvas.bbox(text)[1]-text_y/2), bottom_right=(g.canvas.bbox(text)[2], g.canvas.bbox(text)[3]), fill_color="white")
+            rect = graph.draw_rectangle(top_left=(g.canvas.bbox(text)[0]-text_x/4, g.canvas.bbox(text)[1]-text_y/2), bottom_right=(g.canvas.bbox(text)[2], g.canvas.bbox(text)[3]), fill_color="white")
+            fig_2 = add_figure(rect)
 ## I want to tie the text and background rectangle together. And to be able to edit the text.
 ### TODO: need grouping, asap.
             graph.relocate_figure(text, x-text_x/8, y-text_y/4)
 
             graph.bring_figure_to_front(text)
+
+            return fig_1, fig_2
 
         #if temp:
         for fig in g.temp_figures:
@@ -145,13 +210,20 @@ def make_window():
             if temp:
                 g.temp_figures.append(figure)
             else:
-                g.figures.append(figure)
-                if values.get("add_text"):
-
-                    add_text_to_figure_centre(figure)
-
+                fig = add_figure(figure)
+                print("Added figure")
+                if window["add_text"]:
+                    figs = add_text_to_figure_centre(figure)
+                    figs[1].group_leader=True
+                    fig.group = figs[0].group = figs[1].group = figs[1].id
+                    for f in fig, figs[0], figs[1]:
+                        print(f"Group for {f.id}: {f.group}. Is group leader: {f.group_leader}")
+                else:
+                    fig.group_leader = True
+                    fig.group = fig.id
                 g.selected_figure = figure
                 print(f"non temp rectangle: {figure})")
+                #return fig, figs[0],
 
 
         elif w.active_tool == "circle":
@@ -163,7 +235,7 @@ def make_window():
             if temp:
                 g.temp_figures.append(figure)
             else:
-                g.figures.append(figure)
+                #g.figures.append(figure)
                 g.selected_figure = figure
                 if values.get("add_text"):
                     add_text_to_figure_centre(figure)
@@ -174,6 +246,7 @@ def make_window():
                 g.temp_figures.append(figure)
             else:
                 if g.line_type == "polygon": # note: this way of doing polygons doesn't work because you can't move them, selecting selects a specific line, not the full polygon obj.
+                    print("Ignore polygons for now.")
                     if not temp:
                         g.selected_figure = figure
                         if values.get("add_text"):
@@ -198,6 +271,8 @@ def make_window():
         print(f"g.canvas coords for newly selected figure: {g.canvas.coords(figure)} / figure: {figure}")
         g.selected_figure = figure
         g.selected_coords = g.canvas.coords(figure)
+
+
 
 
 
@@ -366,7 +441,7 @@ def make_window():
         g.canvas = window["graph"].Widget
 
     setup_window()
-    g.current_figure = []
+    g.currently_adding_figure = []
 
     while True and not window.is_closed():
         event, values = window.read(500)
@@ -386,16 +461,17 @@ def make_window():
                 if w.active_tool in ("rectangle", "circle", "line"):
 
                     if event == "graph+UP":
-                        g.current_figure.append(values["graph"])
-                        g.current_figure = draw(g.current_figure)
+                        g.currently_adding_figure.append(values["graph"])
+                        g.currently_adding_figure = draw(g.currently_adding_figure)
+            # just realised I need to break up 'current figure' from 'selected'. 'current figure' is more of 'the one I'm currently making', which may or may not be the selected one. Going to rename and fix this now.
 
                     else:
-                        if not g.current_figure:
-                            g.current_figure.append(values["graph"])
+                        if not g.currently_adding_figure:
+                            g.currently_adding_figure.append(values["graph"])
 
                         else:
                             ending = values["graph"]
-                            draw((g.current_figure[0], ending), temp=True)
+                            draw((g.currently_adding_figure[0], ending), temp=True)
 
                 else:
                     if w.active_tool == "select":
@@ -417,8 +493,8 @@ def make_window():
                                 draw((g.move_figure[0], ending), temp=True)
 """
 
-            elif g.current_figure:
-                g.current_figure = []#= draw(g.current_figure) # so that if you click anything non-graph while drawing a polygon, it just ends drawing that polygon.
+            elif g.currently_adding_figure:
+                g.currently_adding_figure = []#= draw(g.current_figure) # so that if you click anything non-graph while drawing a polygon, it just ends drawing that polygon.
 
             elif event in ("rectangle", "circle", "line", "select", "move"):
                 print(f"EVENT: {event}")
