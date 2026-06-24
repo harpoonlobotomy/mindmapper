@@ -32,6 +32,7 @@ class window_data:
                 if screen_size:
                     window.close()
                     break
+
             return screen_size
 
         if self.testing:
@@ -63,19 +64,36 @@ class figure_data():
         self.group:int = None
         self.group_leader:bool = is_group_leader
 
+    # experimental bits
+        self.is_line:bool = False # will probably re-work a bunch of this into FSG native fns later, just sketching it out for now.
+
+        if self.is_line:
+            self.is_node=False
+
+        self.connections:dict = {} # keys = id(s) of the connective figure(s). values: {"fromnode": fromnode.id, "from_coordinate": (line_start_xy), "tonode": tonode.id, "to_coordinate": (line_end_xy)} # explitly adding from/to nodes and which end of the line they're on. Should be enough to do what I want.
+        """
+        keys = id(s) of the connective figure(s).\n\nvalues = {"fromnode": fromnode.id, "from_coordinate": (line_start_xy), "tonode": tonode.id, "to_coordinate": (line_end_xy)}
+        """
+
+    #def has_connections(self):
+
+
+
+
+
 class graph_data():
 
     def __init__(self):
-        self.graph:sg.Graph = None
-        self.canvas:Canvas = "black"
+        self.graph_access:sg.Graph = None
+        self.canvas:Canvas = None
+
         self.figures:list[int] = []
-
         self.figure_data:list[figure_data] = []
-
         self.temp_figures:list[int] = []
 
-        self.fill_colour:str = None
-        self.line_colour:str = None
+        self.background_colour:str = "#D6ECF1"
+        self.fill_colour:str = self.background_colour#None
+        self.line_colour:str = "black"#None
         self.lighter_line_colour:str = "#494949"
 
         self.line_width = 3
@@ -88,6 +106,7 @@ class graph_data():
         #self.selected_coords:list[int] = []
 
         self.node_links:dict[int:dict] = {}
+        self.additional_connection = [] # .append([(overlapping[0], figure), (overlapping[1], figure)]) # just a place to keep all the various connections raw.
 
     def clear_all(self):
         self.figures = []
@@ -110,19 +129,50 @@ class graph_data():
             else:
                 print(f"No matches for {figure} in get_grouped. Maybe an error, maybe not.")
 
+    def get_fig_instance_by_id(self, figure_id:int) -> figure_data:
+
+        match = list(i for i in self.figure_data if i.id == figure_id)
+        if match:
+            if len(match) > 1:
+                print(f"More than one figure with figure_id {figure_id}. Should never happen.")
+                exit()
+
+        return match[0] # just the instance, not the list.
 
 
 g = graph_data()
 
 def add_figure(figure):
+    """inits and appends figure instance to figure_data"""
     #g.figures.append(figure)
     fig = figure_data(figure)
     #print(f"Added {figure} to figure_data.")
     g.figure_data.append(fig)
     return fig
 
+
 def make_window():
 # back at it, 2:56pm
+
+    def jiggle_figure(figure):
+        from time import sleep
+        #window["figures_list"].set_focus(True)
+        move_distance = 2
+        sleeptime = .02
+
+        g.graph_access.move_figure(figure, move_distance, move_distance)
+        g.canvas.update_idletasks()
+        sleep(sleeptime)
+        g.canvas.update_idletasks()#window.refresh()
+        g.graph_access.move_figure(figure, -move_distance, move_distance)
+        sleep(sleeptime)
+        g.canvas.update_idletasks()#window.refresh()
+        g.graph_access.move_figure(figure, -move_distance, -move_distance)
+        sleep(sleeptime)
+        g.canvas.update_idletasks()#window.refresh()
+        g.graph_access.move_figure(figure, move_distance, -move_distance)
+        sleep(sleeptime)
+        g.canvas.update_idletasks()#window.refresh() # without the refresh each time it doesn't visually update. Would like to find a better way but this is it for now.
 
     #def set_ratio(ratio=(1,1)):
         #return [sg.InputText(default_text=str(ratio[0]), size=(2,1)), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(ratio[1]), size=(2,1))]
@@ -134,7 +184,7 @@ def make_window():
     def move(target_loc, exclude_text=False):
         """ Now immediately jumps to the mouse, so works with single click or a drag. (the print lines get out of hand when dragging but I'll kill those later.) """
         for fig in g.temp_figures:
-            g.graph.delete_figure(fig)
+            g.graph_access.delete_figure(fig)
         g.temp_figures = []
 
         if not g.selected_figure:
@@ -153,7 +203,7 @@ def make_window():
 
         for fig in grouped:
 
-            bounding_box = g.graph.get_bounding_box(fig.id)
+            bounding_box = g.graph_access.get_bounding_box(fig.id)
             centred = bb.centre_on_target(subject=bounding_box, target=target_loc, target_is_point=True)
 
             #print(f"fig in grouped: {fig.id} / all with tag g.selected_figure: ", g.canvas.find_withtag("text")) # This works to get certain types. As long as I've named them on init ofc.
@@ -196,15 +246,15 @@ def make_window():
 
         if g.temp_figures:
             for fig in g.temp_figures:
-                g.graph.delete_figure(fig)
+                g.graph_access.delete_figure(fig)
                 g.temp_figures = []
 
         if w.active_tool == "rectangle":
-            figure = g.graph.draw_rectangle(top_left=current_drawing_xy[0], bottom_right=current_drawing_xy[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
+            figure = g.graph_access.draw_rectangle(top_left=current_drawing_xy[0], bottom_right=current_drawing_xy[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
             if w.testing:
-                a = g.graph.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width = g.line_width)
-                b = g.graph.draw_line(point_from=(current_drawing_xy[0][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[1][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
-                c = g.graph.draw_line(point_from=(current_drawing_xy[1][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[0][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
+                a = g.graph_access.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width = g.line_width)
+                b = g.graph_access.draw_line(point_from=(current_drawing_xy[0][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[1][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
+                c = g.graph_access.draw_line(point_from=(current_drawing_xy[1][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[0][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
 
                 for x in (a,b,c):
                     g.temp_figures.append(x)
@@ -230,7 +280,7 @@ def make_window():
             import math
             d = math.sqrt((current_drawing_xy[1][0] - current_drawing_xy[0][0])**2 + (current_drawing_xy[1][1] - current_drawing_xy[0][1])**2) # for properly round circles.
 
-            figure = g.graph.draw_oval(top_left=current_drawing_xy[0], bottom_right=current_drawing_xy[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
+            figure = g.graph_access.draw_oval(top_left=current_drawing_xy[0], bottom_right=current_drawing_xy[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
             #figure = g.graph.draw_circle(center_location=current_figure[0], radius=d, fill_color=g.fill_colour, line_color=g.line_colour)
             if temp:
                 g.temp_figures.append(figure)
@@ -241,7 +291,7 @@ def make_window():
                     add_text_to_figure_centre(figure, current_drawing_xy)
 
         elif w.active_tool == "line":
-            figure = g.graph.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width=g.line_width)
+            figure = g.graph_access.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width=g.line_width)
             if temp:
                 g.temp_figures.append(figure)
             else:
@@ -253,25 +303,7 @@ def make_window():
                             add_text_to_figure_centre(figure, current_drawing_xy)
                         return list((current_drawing_xy[1],))
                 else:
-                    if values.get("attach_line_to_node"):
-                        #figures_at_start = g.graph.get_figures_at_location(current_drawing_xy[0])
-                        #if figures_at_start:
-                        #    figures_at_start = list(i for i in figures_at_start if g.canvas.find_withtag("main_rectangle"))
-                        #    print(f"Figures at start: {figures_at_start}")
-                        #    if figures_at_start:
-                        #        print("found the main rectangle this line is 'joining'.")
-                        #        figures_at_start = figures_at_start[0]
 
-                        overlapping = g.canvas.find_overlapping(current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10, current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10)
-                        print(f"OVERLAPPING: {overlapping}")
-                        overlapping = list(i for i in overlapping if g.canvas.find_withtag("main_figure"))
-                        #for lap in overlapping:
-                        if len(overlapping) == 2:
-                            print("Assume first and second (drag order will matter here.)")
-
-
-                        print(f"OVERLAPPING shortlist: {overlapping}")
-                        figures_at_end = g.graph.get_figures_at_location(current_drawing_xy[-1])
 
                     #if window["attach_line_to_node"]
                     #g.canvas.
@@ -281,8 +313,44 @@ def make_window():
                     #chexkbox = window["attach_line_to_node"].Widget
                     #print(chexkbox.__dir__())
                     #chexkbox.flash
+                    fig_1 = add_figure(figure)
                     g.figures.append(figure)
                     g.selected_figure = figure
+
+                    if values.get("attach_line_to_node"):
+                        overlapping_start = g.canvas.find_overlapping(current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10, current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10)
+                        #g.graph_access.draw_rectangle((current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10), (current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10), fill_color="blue") # just checking how big the selection box is, this is fine.
+                        if overlapping_start:
+                            # ALSO: need to be able to un/redo this if I move a line later. Adapt it so it's reusable and not reliant on being init.
+                            print(f"OVERLAPPING start: {overlapping_start}")
+                            overlapping_start = list(i for i in overlapping_start if g.canvas.find_withtag("main_figure") and i != figure)
+                            if overlapping_start:
+                                print(f"Start option(s) found: {overlapping_start}")
+                                overlapping_start = overlapping_start[0]
+
+                        overlapping_end = g.canvas.find_overlapping(current_drawing_xy[1][0]-10, current_drawing_xy[1][1]-10, current_drawing_xy[1][0]+10, current_drawing_xy[1][1]+10)
+                        #g.graph_access.draw_rectangle((current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10), (current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10), fill_color="blue") # just checking how big the selection box is, this is fine.
+                        if overlapping_end:
+                            # ALSO: need to be able to un/redo this if I move a line later. Adapt it so it's reusable and not reliant on being init.
+                            print(f"OVERLAPPING end: {overlapping_end}")
+                            overlapping_end = list(i for i in overlapping_end if g.canvas.find_withtag("main_figure") and i != figure)
+                            if overlapping_end:
+                                print(f"End option found: {overlapping_end}")
+                                overlapping_end = overlapping_end[0]
+
+                        for fig in (overlapping_start, overlapping_end):
+                            fig_instance = g.get_fig_instance_by_id(fig)
+                            fig_instance.connections[figure] =  {"fromnode": overlapping_start, "from_coordinate": (current_drawing_xy[0]), "tonode": overlapping_end, "to_coordinate": (current_drawing_xy[1])}
+                            #for lap in overlapping:
+                            """if len(overlapping_start) == 2:
+                                g.node_links[figure] = {"from_node": overlapping_start[0], "to_node": overlapping_start[1]}
+
+                                g.additional_connection.append([(overlapping_start[0], figure), (overlapping_start[1], figure)])
+                                print("Assume first and second (drag order will matter here.)")"""
+                            g.graph_access.send_figure_to_back(figure)
+                                # I need to loop this into the groups, so it redraws the line when the node is moved. The other end should stay in the same place, only the this-end of the line moves.
+                                # Also I kinda want to make it 'zip' to a predefined place on the main shape based on its current location. But that's later.
+
                     if values.get("add_text"):
                         add_text_to_figure_centre(figure, current_drawing_xy)
 
@@ -298,6 +366,12 @@ def make_window():
 
         #print(f"g.canvas coords for newly selected figure: {g.canvas.coords(figure)} / figure: {figure}")
         g.selected_figure = figure
+        grouped = g.get_grouped_figures(figure)
+        if grouped:
+            for i in grouped:
+                jiggle_figure(i.id)
+        else:
+            jiggle_figure(figure)
 
 
     def update_ratio(event, values):
@@ -405,7 +479,7 @@ def make_window():
         ]
     header = [sg.Frame(title="mindmapper", layout=header_buttons, size=(None, 120), expand_x=True, pad=15)]
 
-    graph = sg.Graph(canvas_size=w.graph_dimensions, graph_bottom_left=w.graph_bottom_left, graph_top_right=w.graph_top_right, background_color="#D6ECF1", enable_events=True, drag_submits=True, motion_events=False, key="graph", right_click_menu=[["menu_list"], ["later, select tools from here", "and/or change settings"]])
+    graph = sg.Graph(canvas_size=w.graph_dimensions, graph_bottom_left=w.graph_bottom_left, graph_top_right=w.graph_top_right, background_color=g.background_colour, enable_events=True, drag_submits=True, motion_events=False, key="graph", right_click_menu=[["menu_list"], ["later, select tools from here", "and/or change settings"]])
 
     tool_picker = [
             [simple_radio(group="select_tool", button_name="rectangle", is_default_true=True), simple_radio(group="select_tool", button_name="circle"), simple_radio(group="select_tool", button_name="line"), simple_radio(group="select_tool", button_name="select"), simple_radio(group="select_tool", button_name="move")]
@@ -448,7 +522,7 @@ def make_window():
         if not w.testing:
             window.maximize()
         select_tool(w.active_tool)
-        g.graph = window["graph"] ## type: sg.Graph
+        g.graph_access = window["graph"] ## type: sg.Graph
         g.canvas = window["graph"].Widget
 
 
@@ -497,7 +571,6 @@ def make_window():
                         if event == "graph+UP":
                             print("graph UP")
                             move(values["graph"])
-
 
 
             elif g.currently_adding_figure:
