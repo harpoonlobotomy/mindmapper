@@ -74,6 +74,8 @@ class figure_data():
         """
         keys = id(s) of the connective figure(s).\n\nvalues = {"fromnode": fromnode.id, "from_coordinate": (line_start_xy), "tonode": tonode.id, "to_coordinate": (line_end_xy)}
         """
+    def __repr__(self):
+        return (f"``[ID: {self.id} / group: {self.group} / connections: {self.connections}]``")
 
     #def has_connections(self):
 
@@ -87,7 +89,6 @@ class graph_data():
         self.graph_access:sg.Graph = None
         self.canvas:Canvas = None
 
-        self.figures:list[int] = []
         self.figure_data:list[figure_data] = []
         self.temp_figures:list[int] = []
 
@@ -109,7 +110,14 @@ class graph_data():
         self.additional_connection = [] # .append([(overlapping[0], figure), (overlapping[1], figure)]) # just a place to keep all the various connections raw.
 
     def clear_all(self):
-        self.figures = []
+        self.figure_data = []
+        self.selected_figure = None
+        self.additional_connection = None
+        self.currently_adding_figure = []
+        self.node_links = []
+        self.temp_figures = []
+        g.graph_access.erase()
+
 
     def get_grouped_figures(self, figure:int=None, coord:tuple[int,int,int,int]=None):
         if figure:
@@ -137,7 +145,22 @@ class graph_data():
                 print(f"More than one figure with figure_id {figure_id}. Should never happen.")
                 exit()
 
-        return match[0] # just the instance, not the list.
+            return match[0] # just the instance, not the list.
+
+    def remove_figure(self, line, replace = None):
+        """ Remove from graph with
+        delete_figure(line)
+        , then remove from wherever it is.
+        if replace:
+            add replace value wherever line is being removed from."""
+
+        if replace:
+            if g.get_fig_instance_by_id(line).connections:
+                g.get_fig_instance_by_id(replace).connections = g.get_fig_instance_by_id(line).connections
+            #g.get_fig_instance_by_id(replace).id = line
+
+
+        g.graph_access.delete_figure(line)
 
 
 g = graph_data()
@@ -153,6 +176,14 @@ def add_figure(figure):
 
 def make_window():
 # back at it, 2:56pm
+
+    def get_colour_data(figure):
+        """Returns fill colour, outline colour, line width"""
+        figure_data = g.canvas.itemconfigure(figure)
+        fill = figure_data["fill"][-1] if figure_data.get("fill") else g.background_colour
+        outline = figure_data["outline"][-1] if figure_data.get("outline") else "black"
+        width = figure_data["width"][-1] if figure_data.get("width") else  g.line_width
+        return fill, outline, width
 
     def jiggle_figure(figure):
         from time import sleep
@@ -182,7 +213,9 @@ def make_window():
 
 
     def move(target_loc, exclude_text=False):
-        """ Now immediately jumps to the mouse, so works with single click or a drag. (the print lines get out of hand when dragging but I'll kill those later.) """
+        """ Now immediately jumps to the mouse, so works with single click or a drag. (the print lines get out of hand when dragging but I'll kill those later.)
+
+        NOTE: Currently, drawing multiple lines is adding them all to a group. Need to undo this. Great if I wanted it, but nope."""
         for fig in g.temp_figures:
             g.graph_access.delete_figure(fig)
         g.temp_figures = []
@@ -192,16 +225,63 @@ def make_window():
             return []
 
         grouped = g.get_grouped_figures(g.selected_figure)
+        print(f"Grouped: {grouped}")
 
 
-        if not grouped or exclude_text: # now only moves the text/rectangle on mouseup, but moves the main shape the whole time. Just think it looks nicer as it moves.
+        if not grouped:# or exclude_text: # now only moves the text/rectangle on mouseup, but moves the main shape the whole time. Just think it looks nicer as it moves.
 
             centred = bb.centre_on_target(subject=g.canvas.bbox(g.selected_figure), target=target_loc, target_is_point=True)
             graph.relocate_figure(g.selected_figure, centred[0], centred[1])
             return [[g.selected_figure]]
 
-
+        survivor = None
         for fig in grouped:
+            done_links = []
+            if fig.connections:
+#    Fig in overlaps: ``[ID: 339 / group: 344 / connections: {462: {'fromnode': 181, 'from_coordinate': (591, 140), 'tonode': 339, 'to_coordinate': (196, 185)}}]``
+                linkage = list(fig.connections.keys())
+                """
+Okay so: currently, it /does/ move the node as expected, and technically moves the line, but it moves it entirely instead of maintaining the start vert and only once, after which it just sits there (because clearly I wiped something too early and it got lost). Still... progress? God it's too hot.
+
+                """
+                if linkage:
+                    for line in linkage:
+                        print(f"LINE: {line}")
+                        _, line_col, line_width = get_colour_data(line)
+                        remain_vert = move_vert = None
+                        if done_links and line in done_links:
+                            continue
+                        line_xy = g.canvas.coords(line)
+                        if not line_xy:
+                            print("maybe assume it already worked? (temporarily)")
+                            continue
+                        print(f"fig.connections[line]: {fig.connections[line]}")
+                        if fig.connections[line]["tonode"] == fig.id:
+                            move_vert = target_loc # LINE XY: [549.0, 154.0, 734.0, 146.0]
+                            print(f"line_xy: {line_xy}")
+                            remain_vert = line_xy[0], line_xy[1]
+                            new_line = g.graph_access.draw_line(remain_vert, move_vert, color=line_col, width=line_width)
+                            g.temp_figures.append(new_line)
+                            survivor = new_line
+                            done_links.append(line)
+
+                        elif fig.connections[line]["fromnode"] == fig.id:
+                            move_vert = target_loc # LINE XY: [549.0, 154.0, 734.0, 146.0]
+                            remain_vert = line_xy[2], line_xy[3]
+                            new_line = g.graph_access.draw_line(move_vert, remain_vert, color=line_col, width=line_width) # lmao so now they're identical. Okay.
+                            g.temp_figures.append(new_line)
+                            survivor = new_line
+                            done_links.append(line)
+                            print("and what, just... replace all the instances? Bleh.")
+
+                    if survivor:
+                        g.remove_figure(line)
+                        fig = add_figure(survivor)
+                        if survivor in g.temp_figures:
+                            g.temp_figures.remove(survivor)
+
+
+            print(f"FIG just before get bounding box: {fig}")
 
             bounding_box = g.graph_access.get_bounding_box(fig.id)
             centred = bb.centre_on_target(subject=bounding_box, target=target_loc, target_is_point=True)
@@ -216,6 +296,27 @@ def make_window():
                     # does actually correctly centre. Now all three parts act together as one. plenty of room for improvement but it's something.
 
             graph.relocate_figure(fig.id, centred[0], centred[1])
+
+
+
+        if g.temp_figures:
+            for figure in g.temp_figures:
+                if (survivor and figure != survivor) or not survivor:
+                    g.graph_access.delete_figure(figure)
+
+# Now, tricky thing here is I can't just redraw the line (which is probably simplest) because it'll change the ID. Damn. If I can manually set the ID it's fine, otherwise I'll need to figure out some other kind of categorisation because that'll get ungainly.
+# Or just an autorun 'replace all instances of x index with the new one'? idk
+
+## Need to move to back and assign + delete temp
+
+                """remain_vert = fig.connections[line]["from_coordinate"]
+                            move_vert = fig.connections[line]["to_coordinate"]
+                            done_links.append(line)
+                        elif fig.connections[line]["from_node"] == fig.id:
+                            move_vert = fig.connections[line]["from_coordinate"]
+                            remain_vert = fig.connections[line]["to_coordinate"]
+                            done_links.append(line)"""
+
 
 
     def draw(current_drawing_xy, temp=False):
@@ -291,6 +392,7 @@ def make_window():
                     add_text_to_figure_centre(figure, current_drawing_xy)
 
         elif w.active_tool == "line":
+
             figure = g.graph_access.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width=g.line_width)
             if temp:
                 g.temp_figures.append(figure)
@@ -314,7 +416,6 @@ def make_window():
                     #print(chexkbox.__dir__())
                     #chexkbox.flash
                     fig_1 = add_figure(figure)
-                    g.figures.append(figure)
                     g.selected_figure = figure
 
                     if values.get("attach_line_to_node"):
@@ -327,6 +428,8 @@ def make_window():
                             if overlapping_start:
                                 print(f"Start option(s) found: {overlapping_start}")
                                 overlapping_start = overlapping_start[0]
+                            else:
+                                overlapping_start = None
 
                         overlapping_end = g.canvas.find_overlapping(current_drawing_xy[1][0]-10, current_drawing_xy[1][1]-10, current_drawing_xy[1][0]+10, current_drawing_xy[1][1]+10)
                         #g.graph_access.draw_rectangle((current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10), (current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10), fill_color="blue") # just checking how big the selection box is, this is fine.
@@ -337,17 +440,21 @@ def make_window():
                             if overlapping_end:
                                 print(f"End option found: {overlapping_end}")
                                 overlapping_end = overlapping_end[0]
+                            else:
+                                overlapping_end = None
 
-                        for fig in (overlapping_start, overlapping_end):
-                            fig_instance = g.get_fig_instance_by_id(fig)
-                            fig_instance.connections[figure] =  {"fromnode": overlapping_start, "from_coordinate": (current_drawing_xy[0]), "tonode": overlapping_end, "to_coordinate": (current_drawing_xy[1])}
-                            #for lap in overlapping:
-                            """if len(overlapping_start) == 2:
-                                g.node_links[figure] = {"from_node": overlapping_start[0], "to_node": overlapping_start[1]}
+                        if overlapping_start and overlapping_end:
+                            for fig in (overlapping_start, overlapping_end):
+                                fig_instance = g.get_fig_instance_by_id(fig)
+                                fig_instance.connections[figure] =  {"fromnode": overlapping_start, "from_coordinate": (current_drawing_xy[0]), "tonode": overlapping_end, "to_coordinate": (current_drawing_xy[1])}
+                                print(f"Fig in overlaps: {fig_instance}")
+                                #for lap in overlapping:
+                                """if len(overlapping_start) == 2:
+                                    g.node_links[figure] = {"from_node": overlapping_start[0], "to_node": overlapping_start[1]}
 
-                                g.additional_connection.append([(overlapping_start[0], figure), (overlapping_start[1], figure)])
-                                print("Assume first and second (drag order will matter here.)")"""
-                            g.graph_access.send_figure_to_back(figure)
+                                    g.additional_connection.append([(overlapping_start[0], figure), (overlapping_start[1], figure)])
+                                    print("Assume first and second (drag order will matter here.)")"""
+                        g.graph_access.send_figure_to_back(figure)
                                 # I need to loop this into the groups, so it redraws the line when the node is moved. The other end should stay in the same place, only the this-end of the line moves.
                                 # Also I kinda want to make it 'zip' to a predefined place on the main shape based on its current location. But that's later.
 
@@ -538,8 +645,8 @@ def make_window():
 
             if event == "new":
                 print("event new")
-                window.close()
-                return "restart"
+                g.graph_access.erase()
+                print("also a fn here to clear all the data regarding said figures.")
 
             #print(f"EVENT: {event}")
             if event.startswith("graph"):
@@ -607,6 +714,7 @@ def run():
         outcome = make_window()
         if outcome:
             if outcome == "restart":
+                w.active_tool = "rectangle"
                 continue
         else:
             break
