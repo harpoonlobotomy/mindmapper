@@ -4,11 +4,13 @@ import FreeSimpleGUI as sg
 from tkinter import Canvas
 import nodes_lines_components as nodes
 
+dd = nodes.desk_drawer
 
+CAN_RATIO = ("rectangle", "circle")
 
 def start_window():
 
-    g = nodes.graph_data()
+    g = nodes.g
 
     class window_data:
         def __init__(self):
@@ -27,21 +29,28 @@ def start_window():
             self.show_ratio:bool=False
 
 
-        def move(self, mouse_position, temp=False):
+        def move(self, temp=False):
             if not g.selected_figure:
                 print("get item at mouse pos if any, else still leave.")
                 print("no selected item or item at mouse loc to move .")
                 return
-
+            print("passing to dd.move to move selected figure")
+            dd.move(target_loc=w.values["graph"], exclude_text=temp)
 
             print("move signposting; no actual logic here if poss tho.")
             # also: do not require select, autoselect the thing clicked on /if/ it's the first time during the mousedown. Once a thing has been autoselected, no more autoselect until mouseup.
 
-        def draw(self, mouse_position, temp=False):
-            print("move signposting; no actual logic here if poss tho.")
+        def draw(self, temp=False, custom_coordinates=None):
+            print("passing to dd.draw() to draw figure.")
+            if custom_coordinates:
+                dd.draw(custom_coordinates, values=w.values, temp=temp)
+            else:
+                dd.draw(g.currently_adding_figure, values=w.values, temp=temp)
+            return [] # to clear g.currently_drawing.
 
-        def select(self, mouse_position, temp=False):
-            print("move signposting; no actual logic here if poss tho.")
+        def select(self):
+            print("passing to dd.select() to select figure.")
+            dd.select(self, selection_area=w.values)
 
         def get_graph_dimensions(self):
 
@@ -78,21 +87,52 @@ def start_window():
             self.graph_top_right = (right, top)
 
     def make_window():
-    # back at it, 2:56pm
+
+        def end_current_drawing():
+            """ Just exists to clear the current drawing in the case of polygons etc. Later can decide if a polygon should keep drawing even if you've clicked off."""
+            g.currently_adding_figure = []# something like = draw(g.current_figure) first if you want to draw what's left.
+
+
+        def do_move_and_select():
+            if g.active_tool == "select":
+                if event == "graph+UP":
+                    w.select()
+            # if click and drag selection:#    g.canvas.find_enclosed()
+
+            elif g.active_tool == "move" and g.selected_figure:
+                if event == "graph":
+                    w.move(temp=True)
+                if event == "graph+UP":
+                    print("graph UP")
+                    w.move()
+
+        def add_xy(event):
+            if event == "graph+UP":
+                g.currently_adding_figure.append(w.values["graph"])
+                g.currently_adding_figure = w.draw()
+
+            else:
+                if not g.currently_adding_figure:
+                    g.currently_adding_figure.append(w.values["graph"])
+
+                else:
+                    ending = values["graph"]
+                    w.draw(temp=True, custom_coordinates=(g.currently_adding_figure[0], ending))
 
         def select_tool(event:str):
+            assert g.active_tool in ("rectangle", "circle", "line", "select", "move") if g.active_tool else False
             g.active_tool = event
-            #"rectangle", "circle", "line", "select", "move"
             all_buttons = ["tool_buttons_select", "tool_buttons_rectangle", "tool_buttons_circle", "tool_buttons_line"]
             for panel in all_buttons:
-                if panel.endswith(event):# and values[event]:
+                if panel.endswith(event):
                     window["tool_options_panel"].update(event)
                     window[panel].unhide_row()
                     window[panel].update(visible=True)
                 else:
                     window[panel].hide_row()
 
-            if w.show_ratio and event in ("rectangle", "circle"): # the two that do have set_ratio; need to make this automatic later.
+            if w.show_ratio and event in CAN_RATIO:
+                print ("Ratio not implemented yet.")
                 pass # do the ratio latershow_set_ratio(force_visible=True)
 
 
@@ -196,6 +236,8 @@ def start_window():
             select_tool(g.active_tool)
             g.graph = window["graph"] ## type: sg.Graph
             g.canvas = window["graph"].Widget
+            print(f"Selected tool: {g.active_tool}")
+            print(f"g.graph: {g.graph}")
 
 
         setup_window()
@@ -219,36 +261,14 @@ def start_window():
                 if event.startswith("graph"):
 
                     if g.active_tool in ("rectangle", "circle", "line"):
-
-                        if event == "graph+UP":
-                            g.currently_adding_figure.append(values["graph"])
-                            g.currently_adding_figure = w.draw(g.currently_adding_figure)
-
-                        else:
-                            if not g.currently_adding_figure:
-                                g.currently_adding_figure.append(values["graph"])
-
-                            else:
-                                ending = values["graph"]
-                                w.draw((g.currently_adding_figure[0], ending), temp=True)
+                        add_xy(event)
 
                     else:
-                        if g.active_tool == "select":
-                            if event == "graph+UP":
-                                w.select(values["graph"])
-                        # if click and drag selection:
-                        #    g.canvas.find_enclosed()
-
-                        elif g.active_tool == "move" and g.selected_figure:
-                            if event == "graph":
-                                w.move(values["graph"], exclude_text=True)
-                            if event == "graph+UP":
-                                print("graph UP")
-                                w.move(values["graph"])
+                        do_move_and_select()
 
 
                 elif g.currently_adding_figure:
-                    g.currently_adding_figure = []#= draw(g.current_figure) # so that if you click anything non-graph while drawing a polygon, it just ends drawing that polygon.
+                    end_current_drawing()
 
                 elif event in ("rectangle", "circle", "line", "select", "move"):
                     select_tool(event)
