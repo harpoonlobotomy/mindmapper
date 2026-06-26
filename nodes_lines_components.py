@@ -243,7 +243,7 @@ class desk:
             #connections[line_figure_id] = {"fromnode": fromnode.id, "from_coordinate": (line_start_xy), "tonode": tonode.id, "to_coordinate": (line_end_xy)}
 
 
-        def draw_newline(self, existing_line_instance:line, line_start, line_end):# -> tuple[None, list]:
+        def draw_newline(existing_line_instance:line, line_start, line_end):# -> tuple[None, list]:
             """returns new_line figure_id"""
             _, outline_colour, line_width = self.get_colour_data(existing_line_instance.figure_id)
             new_line = g.graph.draw_line((int(line_start[0]), int(line_start[1])), (int(line_end[0]), int(line_end[1])), color=outline_colour, width=line_width)
@@ -300,7 +300,7 @@ class desk:
                 new_line = None
 
                 if line_inst.to_node == primary_object:
-                    new_line = draw_newline(line_inst, line_start=line_inst.start_coords, line_end=target_loc)
+                    new_line = draw_newline(existing_line_instance=line_inst, line_start=line_inst.start_coords, line_end=target_loc)
                     print("line's to-node was the object drawn to. coords 2,3 are used.")
                 elif line_inst.from_node == primary_object:
                     #new_line = draw_newline(line_inst, line_start=target_loc, line_end=line_inst.end_coords)
