@@ -1,4 +1,6 @@
-"""shit I should just make a mind-map script. Goddamn. 10.41am 23/6/26"""
+"""shit I should just make a mind-map script. Goddamn. 10.41am 23/6/26
+switching to more instance based to get rid of so many damn ids. Will use nodes_lines_components as a separate script to try to keep it clearer."""
+
 
 import FreeSimpleGUI as sg
 from tkinter import Canvas
@@ -59,7 +61,7 @@ w = window_data()
 import uuid
 class figure_data():
 
-    def __init__(self, id, is_group_leader=False):
+    def __init__(self, id, parent:figure_data=False, figure_type=w.active_tool):
         """
         figure_id\n
         pointer\n
@@ -71,16 +73,33 @@ class figure_data():
         """ self.figure_id is just the original figure_id that Canvas expects."""
         self.pointer:int = uuid.uuid4()
         """ self.pointer is the address, figure_id is the current resident. Residents can change but we're always at the same house."""
-        self.group:int = None
-        self.group_leader:bool = is_group_leader
 
-        self.type:str = "" # eg 'rectangle', 'line'.
+        self.parent:int = parent.pointer if parent else self.pointer
+        self.type:str = figure_type
+
+        if self.type == "line":
+            self.fromnode = None
+            self.tonode = None
+
+        if self.parent == self.pointer and not self.type == "line":
+            self.text_child = None
+            self.text_bg_child = None
+            self.lines=[]
+
+#  CURRENTLY: line works for the first move, then disappears. Just a simple logic fix.
+
+        self.children = []
+    # alt:
+
+
+        self.coords:tuple[int] = g.canvas.coords(self.figure_id)
+
         self.connections:dict = {} # keys = id(s) of the connective figure(s). values: {"fromnode": fromnode.id, "from_coordinate": (line_start_xy), "tonode": tonode.id, "to_coordinate": (line_end_xy)} # explitly adding from/to nodes and which end of the line they're on. Should be enough to do what I want.
         """
         keys = id(s) of the connective figure(s).\n\nvalues = {"fromnode": fromnode.id, "from_coordinate": (line_start_xy), "tonode": tonode.id, "to_coordinate": (line_end_xy)}
         """
     def __repr__(self):
-        return (f"``[ID: {self.figure_id} / group: {self.group} / connections: {self.connections}]``")
+        return (f"``[ID: {self.figure_id} / Pointer: {self.pointer} / parent: {self.parent} / type: {self.type}]``")
 
     #def has_connections(self):
 
@@ -135,23 +154,31 @@ class graph_data():
         g.graph_access.erase()
 
 
+    def get_siblings(self, instance=None):
+        """ Returns a list of pointers for any siblings.
+        Optional: It can include the parent, so the parent is moved the same way as the other components. Yes? Will try."""
+
+        if not instance:
+            instance = g.get_fig_instance(g.selected_figure)
+
+
+        parent = g.get_fig_instance(instance.parent)
+        siblings = parent.children#(set(parent.children)|set((parent.pointer,))) if parent.children else set((parent.pointer,))
+
+
+        return siblings
+
     def get_grouped_figures(self, pointer:int=None, coord:tuple[int,int,int,int]=None) -> list[figure_data]:
 
         if pointer:
-           # print(f"figure in g.get_grouped_figures: {figure}")
-            matches = list(i for i in self.pointer_index if i == pointer)
+
+            matches = self.get_siblings(g.get_fig_instance(pointer))
             if matches:
-                #print(f"Matches: {matches}")
-                #grouped = list(i.id for i in self.figure_data if i.group == figure.group)
-                grouped = list(self.pointer_index[i] for i in self.pointer_index if g.pointer_index[i].group == g.get_fig_instance_by_id_or_pointer(pointer).group)
-                # now returns the figure_data objects instead of ids, so I can use it later for merging groups etc.
-                #print(f"grouped before return: {grouped}")
-                #print(f"GROUPED in get_grouped_figures: {list(i.id for i in grouped)}")
-                return grouped
+                return matches
             else:
                 print(f"No matches for {pointer} in get_grouped. Maybe an error, maybe not.")
 
-    def get_fig_instance_by_id_or_pointer(self, pointer=None, figure_id:int=None) -> figure_data:
+    def get_fig_instance(self, pointer=None, figure_id:int=None) -> figure_data:
 
         """ Here, we need to get the pointer, and only use the figure_id to get to that. We shouldn't apply anything outside of graph elements themselves using figure_id."""
 
@@ -161,10 +188,6 @@ class graph_data():
         if figure_id and self.figure_id_index.get(figure_id):
                 return self.figure_id_index[figure_id]
 
-        if pointer and self.figure_id_index.get(pointer): # these two are here for stragglers, will delete them later once things are aligned.
-            return self.figure_id_index[pointer]
-        if self.pointer_index.get(figure_id):
-            return self.pointer_index[figure_id]
 
     def remove_figure(self, line, replace = None):
         """ Remove from graph with
@@ -174,8 +197,8 @@ class graph_data():
             add replace value wherever line is being removed from."""
 
         if replace:
-            if g.get_fig_instance_by_id_or_pointer(line).connections:
-                g.get_fig_instance_by_id_or_pointer(replace).connections = g.get_fig_instance_by_id_or_pointer(line).connections
+            if g.get_fig_instance(line).connections:
+                g.get_fig_instance(replace).connections = g.get_fig_instance(line).connections
             #g.get_fig_instance_by_id(replace).id = line
 
 
@@ -189,10 +212,10 @@ class graph_data():
 
 g = graph_data()
 
-def add_figure(figure_id):
+def add_figure(figure_id, type=w.active_tool, parent=None) -> figure_data:
     """inits and appends figure instance to figure_data"""
     #g.figures.append(figure)
-    fig = figure_data(figure_id)
+    fig = figure_data(figure_id, parent=parent, figure_type=type)
     #print(f"Added {figure} to figure_data.")
     """ Going to swap out figure_data for the new index. I want to try to be intentional about when I use pointer vs anything else."""
     g.pointer_index[fig.pointer] = fig
@@ -204,21 +227,21 @@ def add_figure(figure_id):
 def make_window():
 # back at it, 2:56pm
 
-    def get_colour_data(figure):
+    def get_colour_data(figure_id):
         """Returns fill colour, outline colour, line width"""
-        figure_data = g.canvas.itemconfigure(figure)
+
+        figure_data = g.canvas.itemconfigure(figure_id)
         fill = figure_data["fill"][-1] if figure_data.get("fill") else g.background_colour
         outline = figure_data["outline"][-1] if figure_data.get("outline") else "black"
         width = figure_data["width"][-1] if figure_data.get("width") else  g.line_width
         return fill, outline, width
 
-    def jiggle_figure(pointer):
+    def jiggle_figure(figure_instance:figure_data):
+
         from time import sleep
         #window["figures_list"].set_focus(True)
         move_distance = 2
         sleeptime = .02
-
-        figure_instance = g.pointer_index[pointer]
 
         g.graph_access.move_figure(figure_instance.figure_id, move_distance, move_distance)
         g.canvas.update_idletasks()
@@ -234,12 +257,6 @@ def make_window():
         sleep(sleeptime)
         #g.canvas.update_idletasks()#window.refresh() # without the refresh each time it doesn't visually update. Would like to find a better way but this is it for now.
 
-    #def set_ratio(ratio=(1,1)):
-        #return [sg.InputText(default_text=str(ratio[0]), size=(2,1)), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(ratio[1]), size=(2,1))]
-    def get_grouped(figure_id):
-        print("gettags: ", g.canvas.gettags(figure_id))
-        print(f"g.graph: {g.canvas.find_withtag("main_figure")}") # always the second; first is element-type (text, main rect, text rect.) # works to find the type tag so still have some use, but 'find_withtag' only ever returns self. Need to look into it.
-
 
     def move(target_loc, exclude_text=False):
         """ Now immediately jumps to the mouse, so works with single click or a drag. (the print lines get out of hand when dragging but I'll kill those later.)
@@ -254,107 +271,99 @@ def make_window():
             #connections[line_figure_id] = {"fromnode": fromnode.id, "from_coordinate": (line_start_xy), "tonode": tonode.id, "to_coordinate": (line_end_xy)}
 
 
-        def draw_newline(existing_line_instance, line_start, line_end):# -> tuple[None, list]:
-
-            new_line = g.graph_access.draw_line(line_start, line_end, color=line_col, width=line_width)
+        def draw_newline(existing_line_instance:figure_data, line_start, line_end):# -> tuple[None, list]:
+            """returns new_line figure_id"""
+            _, outline_colour, line_width = get_colour_data(existing_line_instance.figure_id)
+            new_line = g.graph_access.draw_line(line_start, line_end, color=outline_colour, width=line_width)
 
             g.temp_figures.append(new_line)
-            done_links.append(existing_line_instance.pointer)
+            #done_links.append(existing_line_instance.pointer)
 
-            return new_line, done_links
+            return new_line
 
         g.clear_temp_figures()
 
         if not g.selected_figure:
             print("No selected figure, cannot move.")
             return []
-
-        grouped = g.get_grouped_figures(g.selected_figure)
+        print(f"g.selected_figure: {g.selected_figure}")
+        primary_object = g.get_fig_instance(g.selected_figure)
+        print(f"Primary object about to get_siblings: {primary_object}")
+        luggage = g.get_siblings(primary_object)
+        #siblings = g.get_grouped_figures(g.selected_figure)
         #print(f"Grouped: {grouped}")
+        centred = bb.centre_on_target(subject=g.canvas.bbox(primary_object.figure_id), target=target_loc, target_is_point=True)
+        print(f"CENTRED: {centred} / TYPE: {primary_object.type}")
 
-
-        if not grouped:# or exclude_text: # now only moves the text/rectangle on mouseup, but moves the main shape the whole time. Just think it looks nicer as it moves.
-
-            centred = bb.centre_on_target(subject=g.canvas.bbox(g.selected_figure), target=target_loc, target_is_point=True)
-            graph.relocate_figure(g.selected_figure, centred[0], centred[1])
+        if not luggage or exclude_text: # now only moves the text/rectangle on mouseup, but moves the main shape the whole time. Just think it looks nicer as it moves.
+            graph.relocate_figure(primary_object.figure_id, centred[0], centred[1])
+            print("not siblings or exclude_text==True, returning after moving selected figure.")
             return [[g.selected_figure]]
 
-        survivor = None # figure_id
-        done_links = [] # pointer ids
-        for fig in grouped:
-            if fig.connections and not exclude_text:
-                linkage = list(fig.connections.keys())
+# First move the main object
+        graph.relocate_figure(primary_object.figure_id, centred[0], centred[1])
 
-                if linkage:
-                    for line in linkage:
-                        if line in done_links:
-                            continue
-                        print(f"LINE: {line}")
-                        line_instance = g.get_fig_instance_by_id_or_pointer(line)
-
-                        if not line_instance:
-                            print("No line instance in def move ln 293")
-                        if done_links and line_instance.figure_id in done_links:
-                            continue
-                        _, line_col, line_width = get_colour_data(line)
-                        remain_vert = move_vert = None
-
-                        #line_xy = g.canvas.coords(line_instance.figure_id)
-                        #if not line_xy:
-                            #print("maybe assume it already worked? (temporarily)")
-                            #continue
-                        #print(f"fig.connections[line]: {fig.connections[line]}")
-                        if fig.connections[line]["tonode"] == fig.pointer:
-                            print("tonode == pointer")
-
-                            #print(f"line_xy: {line_xy}")
-                            move_vert = target_loc # LINE XY: [549.0, 154.0, 734.0, 146.0]
-                            remain_vert = fig.connections[line]["from_coordinate"]#line_xy[0], line_xy[1]
-                            print(f"remain_vert: {remain_vert} / move_vert: {move_vert}")
-                            survivor, done_links = draw_newline(line_instance, line_start=move_vert, line_end=remain_vert)
-                            #survivor, done_links = draw_newline(line_instance, line_start=remain_vert, line_end=move_vert)
-
-#   Only issue now: it stil doesn't remove  the original line.
-# also the code's a mess but what's new.
-# also the text is uncentred again, I need to find a(nother) better way of accessing the types.
-
-                        #elif fig.connections[line]["fromnode"] == fig.pointer:
-                        #    print("fromnode == pointer")
-                        #    move_vert = target_loc # LINE XY: [549.0, 154.0, 734.0, 146.0]
-                        #    remain_vert = line_xy[2], line_xy[3]
-                        #    survivor, done_links = draw_newline(line_instance.figure_id, line_start=move_vert, line_end=remain_vert)
-                            #new_line = g.graph_access.draw_line(move_vert, remain_vert, color=line_col, width=line_width)
-                            #g.temp_figures.append(new_line)
-                            #survivor = new_line
-                            #done_links.append(line)
-                            #print("and what, just... replace all the instances? Bleh.")
-
-# now only keeps the current line.
-            if survivor:
-                g.remove_figure(line_instance.figure_id)
-                g.remove_figure(line)
-                add_figure(survivor)
-                g.graph_access.send_figure_to_back(survivor)
-                #if survivor in g.temp_figures:
-                    #g.temp_figures.remove(survivor)
-            #if survivor:
-            #    fig = add_figure(survivor)
-            #    fig.pointer =
-
-
-            bounding_box = g.graph_access.get_bounding_box(fig.figure_id)
-            centred = bb.centre_on_target(subject=bounding_box, target=target_loc, target_is_point=True)
-
-            #print(f"fig in grouped: {fig.id} / all with tag g.selected_figure: ", g.canvas.find_withtag("text")) # This works to get certain types. As long as I've named them on init ofc.
-
-            if fig.figure_id in g.canvas.find_withtag("text"):
-            #configs = g.canvas.itemconfig(fig.id)
+        # going to explicitly check for the label parts, because I can see them being specifically reused/altered later. For more general attr, just store somewhere neatly.
+        for fig in luggage:
+            fig = g.get_fig_instance(fig)
+            centred = bb.centre_on_target(subject=g.canvas.bbox(fig.figure_id), target=target_loc, target_is_point=True)
+            print(f"CENTRED: {centred} / TYPE: {fig.type}")
+            if fig.type == "text":
+            #print(f"Fig type: {fig.type}")
+            #if fig.figure_id in g.canvas.find_withtag("text"):
+            ##configs = g.canvas.itemconfig(fig.id)
             #if "text" in configs:
-                    width, height = bb.bbox_width_and_height(centred)
-                    centred = centred[0]+(width/2)-2, centred[1]+height/2-2, centred[2]+(width/2)-2, centred[3]+(height/2)-2
-                    # does actually correctly centre. Now all three parts act together as one. plenty of room for improvement but it's something.
+                width, height = bb.bbox_width_and_height(centred)
+                centred = centred[0]+(width/2)-2, centred[1]+height/2-2, centred[2]+(width/2)-2, centred[3]+(height/2)-2
+                # does actually correctly centre. Now all three parts act together as one. plenty of room for improvement but it's something.
 
             graph.relocate_figure(fig.figure_id, centred[0], centred[1])
+
+        if primary_object.lines:
+            new_lines = []
+            for line in primary_object.lines:
+                # MAKE LINE BE THE POINTER
+                new_line = None
+
+                print(f"line in primary object lines: {line}")
+                line_inst = g.get_fig_instance(line)
+                print(f"line inst: {line_inst}")
+                # oops: line inst: ``[Pointer: b51be5ad-cfd3-4398-8630-433959a2d4ce / parent: efd45782-9c56-4ace-be55-1fb16fcbc5fd / type: move]``
+                # this is a line, but because it was created while I was moving something, it thinks its a 'move' obj which does not exist. No wonder it breaks.
+                if not line_inst:
+                    print(f"no inst for {line}")
+                    exit()
+
+                if line_inst.tonode == primary_object.pointer:
+                    new_line = draw_newline(line_inst, line_start=(line_inst.coords[0], line_inst.coords[1]), line_end=target_loc)
+                    print("line's to-node was the object drawn to. coords 2,3 are used.")
+                elif line_inst.fromnode == primary_object.pointer:
+                    new_line = draw_newline(line_inst, line_start=target_loc, line_end=(line_inst.coords[2], line_inst.coords[3]))
+                    print("lines 0 and 1 are to be used, the from node is being moved.")
+
+                if new_line:
+                    print(f"line inst: {line_inst}")
+                    print(f"line_inst.figure_id: {line_inst.figure_id}")
+                    line_coords = g.canvas.coords(line_inst.figure_id)
+                    print(f"line coords: {line_coords}")
+
+                    print(f"inst.fromnode: {line_inst.fromnode}")
+                    print(f"inst.to_node: {line_inst.tonode}")
+                    print(f"g.canvas.coords(inst.figure_id): {g.canvas.coords(line_inst.figure_id)}")
+                        #line_coords = g.canvas.coords(inst.figure_id)
+                        #print(f"line coords: {line_coords}")
+                    if g.canvas.find_withtag(line_inst.figure_id):
+                        g.graph_access.delete_figure(line_inst.figure_id)
+                    if not g.get_fig_instance(figure_id=new_line):
+                        print(f"Newly created line isn't an instance yet, at lest not according to {new_line}")
+                        new_inst = add_figure(new_line, type="line")
+                    else:
+                        new_inst = g.get_fig_instance(figure_id = new_line)
+                    new_inst.pointer = line_inst.pointer
+                    line_inst.pointer = None # god way of showing it's done for.
+                    if new_inst.pointer not in new_lines:
+                        primary_object.lines.append(new_inst.pointer)
+                    #new_lines.append(new_inst.pointer)
 
         #for line in done_links:
         #    g.remove_figure(line)
@@ -367,7 +376,7 @@ def make_window():
 
         if g.temp_figures:
             for figure in g.temp_figures:
-                if (survivor and figure != survivor) or not survivor:
+                if (new_line and figure != new_line) or not new_line:
                     g.graph_access.delete_figure(figure)
 
 # Now, tricky thing here is I can't just redraw the line (which is probably simplest) because it'll change the ID. Damn. If I can manually set the ID it's fine, otherwise I'll need to figure out some other kind of categorisation because that'll get ungainly.
@@ -386,38 +395,35 @@ def make_window():
 
 
     def draw(current_drawing_xy, temp=False):
-        def add_text_to_figure_centre(figure_id, current_coords):
-        #g.canvas.find_enclosed()
-        #g.canvas.find_closest()
-            if isinstance(figure_id, figure_data):
-                figure_id = figure_id.figure_id
 
-            leader_instance = g.get_fig_instance_by_id_or_pointer(figure_id)
-            leader_instance.group_leader=True
-            leader_instance.group=leader_instance.pointer
-            leader_instance.type=w.active_tool
-            #g.canvas.itemconfig(text, {"tags": [["text"], [leader_instance.pointer]]})
+        def add_text_to_figure_centre(leader_instance:figure_data, current_coords) -> tuple[figure_data, figure_data]:
+
             text_figure_id = graph.draw_text(text=values["add_text"], location=(current_coords[-1]))
-            new_text_bbox = bb.centre_on_target(subject=g.canvas.bbox(text_figure_id), target=g.canvas.bbox(figure_id))
+            new_text_bbox = bb.centre_on_target(subject=g.canvas.bbox(text_figure_id), target=g.canvas.bbox(leader_instance.figure_id))
             half_text_w = (new_text_bbox[2] - new_text_bbox[0])/2
             half_text_h = (new_text_bbox[3] - new_text_bbox[1])/2
 
             graph.relocate_figure(text_figure_id, new_text_bbox[0] + half_text_w, new_text_bbox[1] + half_text_h)
-            text_instance = add_figure(text_figure_id)
-            text_instance.group=leader_instance.pointer
-            text_instance.type="text"
+            text_instance = add_figure(text_figure_id, type="text", parent=leader_instance)
+            #text_instance.type="text"
+            print(f"parent type: {leader_instance.type}")
+            text_instance.parent=leader_instance.pointer
+            leader_instance.text_child = text_instance.pointer
+            leader_instance.children.append(text_instance.pointer)
+
             #g.canvas.itemconfig(text, {"tags": [["text"], [leader_instance.pointer]]})
 
             top_left = g.canvas.bbox(text_figure_id)[0]-5, g.canvas.bbox(text_figure_id)[1]-5
             bottom_right = g.canvas.bbox(text_figure_id)[2]+5, g.canvas.bbox(text_figure_id)[3]+5
 
-            centred_rectangle = bb.centre_on_target(subject=(top_left, bottom_right), target=g.canvas.bbox(figure_id))
+            centred_rectangle = bb.centre_on_target(subject=(top_left, bottom_right), target=g.canvas.bbox(leader_instance.figure_id))
             rect = graph.draw_rectangle(top_left=(centred_rectangle[0], centred_rectangle[1]), bottom_right=(centred_rectangle[2], centred_rectangle[3]), fill_color="white", line_color=g.lighter_line_colour)
-            text_bg_instance = add_figure(rect)
-            text_bg_instance.group=leader_instance.pointer
-            text_bg_instance.type="rectangle_sml"
+            text_bg_instance = add_figure(rect, "rectangle_sml", parent=leader_instance)
+            text_bg_instance.parent=leader_instance.pointer
+            #text_bg_instance.type="rectangle_sml"
             #g.canvas.itemconfig(rect, {"tags": [["sml_rect"], [leader_instance.pointer]]})
-
+            leader_instance.text_bg_child = text_bg_instance.pointer
+            leader_instance.children.append(text_bg_instance.pointer)
             graph.bring_figure_to_front(text_figure_id)
 
             return text_instance, text_bg_instance
@@ -440,18 +446,21 @@ def make_window():
             if temp:
                 g.temp_figures.append(figure_id)
             else:
-                figure_instance = add_figure(figure_id)
+                parent_instance = add_figure(figure_id)
+                parent_instance.parent=parent_instance.pointer
+                parent_instance.type=w.active_tool
+                #g.canvas.itemconfig(text, {"tags": [["text"], [leader_instance.pointer]]})
+                parent_instance.text_child = None # just let it carry its own damn children.
+                parent_instance.text_bg_child = None
                 if values["add_text"]:
-                    figs = add_text_to_figure_centre(figure_instance.figure_id, current_drawing_xy)
+                    figs = add_text_to_figure_centre(parent_instance, current_drawing_xy)
                     print(f"FIGS: {figs}")
                     #figs[1].group_leader=True
                     #fig.group = figs[0].group = figs[1].group = figs[1].pointer
                     #for f in fig, figs[0], figs[1]:
                     #    print(f"Group for {f.id}: {f.group}. Is group leader: {f.group_leader}")
-                else:
-                    figure_instance.group_leader = True
-                    figure_instance.group = figure_instance.pointer
-                g.selected_figure = figure_instance.pointer
+
+                g.selected_figure = parent_instance.pointer
 
 
         elif w.active_tool == "circle":
@@ -466,68 +475,89 @@ def make_window():
                 #g.figures.append(figure)
                 g.selected_figure = figure_id
                 if values.get("add_text"):
-                    add_text_to_figure_centre(figure_id, current_drawing_xy)
+                    add_text_to_figure_centre(g.get_fig_instance(figure_id=figure_id), current_drawing_xy)
 
         elif w.active_tool == "line":
 
             figure_id = g.graph_access.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width=g.line_width)
-            figure_instance = add_figure(figure_id)
+            parent_instance = add_figure(figure_id)
             if temp:
                 g.temp_figures.append(figure_id)
             else:
                 if g.line_type == "polygon": # note: this way of doing polygons doesn't work because you can't move them, selecting selects a specific line, not the full polygon obj.
                     print("Ignore polygons for now.")
                     if not temp:
-                        g.selected_figure = figure_instance.pointer
+                        g.selected_figure = parent_instance.pointer
                         if values.get("add_text"):
-                            add_text_to_figure_centre(figure_id, current_drawing_xy)
+                            add_text_to_figure_centre(g.get_fig_instance(figure_id=figure_id), current_drawing_xy)
                         return list((current_drawing_xy[1],))
                 else:
-                    g.selected_figure = figure_instance.pointer
+                    g.selected_figure = parent_instance.pointer
 
                     if values.get("attach_line_to_node"):
-                        overlapping_start = g.canvas.find_overlapping(current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10, current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10)
-                        #g.graph_access.draw_rectangle((current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10), (current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10), fill_color="blue") # just checking how big the selection box is, this is fine.
-                        if overlapping_start:
-                            # ALSO: need to be able to un/redo this if I move a line later. Adapt it so it's reusable and not reliant on being init.
-                            print(f"OVERLAPPING start: {overlapping_start}")
-                            overlapping_start = list(i for i in overlapping_start if g.get_fig_instance_by_id_or_pointer(figure_id=i) and i != figure_id)
-                            if overlapping_start:
-                                print(f"Start option(s) found: {overlapping_start}")
-                                overlapping_start = overlapping_start[0]
+                        from_node = g.canvas.find_overlapping(current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10, current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10)
+                        if from_node:
+                            from_node = list(g.get_fig_instance(figure_id=i) for i in from_node if g.get_fig_instance(figure_id=i) and i != figure_id) # export the instances immediately
+                            if from_node:
+                                from_node = from_node[0]
                             else:
-                                overlapping_start = None
+                                from_node = None
 
-                        overlapping_end = g.canvas.find_overlapping(current_drawing_xy[1][0]-10, current_drawing_xy[1][1]-10, current_drawing_xy[1][0]+10, current_drawing_xy[1][1]+10)
-                        g.graph_access.draw_rectangle((current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10), (current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10), fill_color="blue") # just checking how big the selection box is, this is fine.
-                        if overlapping_end:
-                            # ALSO: need to be able to un/redo this if I move a line later. Adapt it so it's reusable and not reliant on being init.
-                            print(f"OVERLAPPING end: {overlapping_end}")
-                            overlapping_end = list(i for i in overlapping_end if g.get_fig_instance_by_id_or_pointer(figure_id=i) and i != figure_id)
-                            if overlapping_end:
-                                print(f"End option found: {overlapping_end}")
-                                overlapping_end = overlapping_end[0]
+
+                        to_node = g.canvas.find_overlapping(current_drawing_xy[1][0]-10, current_drawing_xy[1][1]-10, current_drawing_xy[1][0]+10, current_drawing_xy[1][1]+10)
+                        if to_node:
+                            to_node = list(g.get_fig_instance(figure_id=i) for i in to_node if g.get_fig_instance(figure_id=i) and i != figure_id)
+                            if to_node:
+                                to_node = to_node[0]
                             else:
-                                overlapping_end = None
+                                to_node = None
 
-                        if overlapping_start and overlapping_end:
-                            for f in (overlapping_start, overlapping_end):
+                        if from_node and to_node:
+                            print(f"From node: {from_node} / to_node: {to_node}")
+                            parent_instance.fromnode = from_node.pointer
+                            parent_instance.tonode = to_node.pointer
+                            parent_instance.figure_id = figure_id
+                            if parent_instance.pointer not in from_node.lines:
+                                from_node.lines.append(parent_instance.pointer)
+                            if parent_instance.pointer not in to_node.lines:
+                                to_node.lines.append(parent_instance.pointer)
+
+                            # check to see if there's already a link between these two
+                            g.graph_access.draw_rectangle((current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10), (current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10), fill_color="blue") # just checking how big the selection box is, this is fine.
+                            if from_node and to_node:
+                                print(f"g.selected_figure with from_node and to_node: {g.selected_figure}")
+                                g.selected_figure = to_node.pointer
+                                print(f"Figure_id with from_node and to_node: {figure_id}\nto_node is now selected: {g.selected_figure}")
+
+                                parent_instance.fromnode
+
+                                print("So we have the two and from node at this point, we know they'll be joined. And parent is the line. So we need to swap the figure_id for parent, then we're done, right?")
+
+
+
+
+
+                            """
+                            for f in (from_node, to_node):
                                 print(f"fig in overlapping start/end: {f}")
                                 f_instance = g.get_fig_instance_by_id_or_pointer(figure_id = f)
-                                f_instance.connections[figure_instance.pointer] =  {"fromnode": g.get_fig_instance_by_id_or_pointer(overlapping_start).pointer, "from_coordinate": (current_drawing_xy[0]), "tonode": g.get_fig_instance_by_id_or_pointer(overlapping_end).pointer, "to_coordinate": (current_drawing_xy[1])}
-                                print(f"Fig in overlaps: {f_instance}")
+                                if f_instance.parent:
+                                    f_instance.connections[parent_instance.pointer] =  {"fromnode": g.get_fig_instance_by_id_or_pointer(from_node).pointer, "from_coordinate": (current_drawing_xy[0]), "tonode": g.get_fig_instance_by_id_or_pointer(to_node).pointer, "to_coordinate": (current_drawing_xy[1])}
+                                    print(f"Fig in overlaps: {f_instance}")
                                 #for lap in overlapping:
-                                """if len(overlapping_start) == 2:
+                                #""if len(overlapping_start) == 2:
                                     g.node_links[figure] = {"from_node": overlapping_start[0], "to_node": overlapping_start[1]}
 
                                     g.additional_connection.append([(overlapping_start[0], figure), (overlapping_start[1], figure)])
-                                    print("Assume first and second (drag order will matter here.)")"""
+                                    print("Assume first and second (drag order will matter here.)")#"""""
+                        else:
+                            print(f"not tonode {to_node} and fromnode: {from_node}")
                         g.graph_access.send_figure_to_back(figure_id)
                                 # I need to loop this into the groups, so it redraws the line when the node is moved. The other end should stay in the same place, only the this-end of the line moves.
                                 # Also I kinda want to make it 'zip' to a predefined place on the main shape based on its current location. But that's later.
 
-                    if values.get("add_text"):
-                        add_text_to_figure_centre(figure_id, current_drawing_xy)
+                    if values.get("add_text") and values.get("attach_line_to_node"): # was 'or'
+                        add_text_to_figure_centre(g.get_fig_instance(figure_id=figure_id), current_drawing_xy)
 
         return []
 
@@ -540,13 +570,15 @@ def make_window():
         figure = figures[0] if figures else None
 
         #print(f"g.canvas coords for newly selected figure: {g.canvas.coords(figure)} / figure: {figure}")
-        g.selected_figure = g.get_fig_instance_by_id_or_pointer(figure).pointer
-        grouped = g.get_grouped_figures(g.selected_figure)
+        primary_object = g.get_fig_instance(figure_id=figure)
+
+        grouped = g.get_siblings(primary_object)
+
         if grouped:
             for i in grouped:
-                jiggle_figure(i.pointer)
-        else:
-            jiggle_figure(g.selected_figure)
+                jiggle_figure(g.get_fig_instance(pointer=i))
+
+        jiggle_figure(primary_object)
 
 
     def update_ratio(event, values):
@@ -562,7 +594,6 @@ def make_window():
 
     def show_set_ratio(force_visible=False, force_hidden=False, ignore_checkbox=False):
 
-        print("def show_set_ratio")
         window.refresh()
         if (w.show_ratio or force_visible) and not force_hidden:
             window["set_ratio_column"].unhide_row()
