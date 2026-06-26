@@ -1,7 +1,6 @@
 """Minimim viable product GUI"""
 
 import FreeSimpleGUI as sg
-from tkinter import Canvas
 import nodes_lines_components as nodes
 
 dd = nodes.desk_drawer
@@ -16,7 +15,6 @@ def start_window():
         def __init__(self):
             self.testing = True
 
-            self.window_access = None
             self.values = {}
 
             self.window_size:tuple[int,int] = (1600,1920)
@@ -31,26 +29,18 @@ def start_window():
 
         def move(self, temp=False):
             if not g.selected_figure:
-                print("get item at mouse pos if any, else still leave.")
-                print("no selected item or item at mouse loc to move .")
+                #TODO: get figure at xy if any and set selected.
                 return
-            print("passing to dd.move to move selected figure")
             dd.move(target_loc=w.values["graph"], exclude_text=temp)
 
-            print("move signposting; no actual logic here if poss tho.")
-            # also: do not require select, autoselect the thing clicked on /if/ it's the first time during the mousedown. Once a thing has been autoselected, no more autoselect until mouseup.
 
         def draw(self, temp=False, custom_coordinates=None):
-            print("passing to dd.draw() to draw figure.")
-            if custom_coordinates:
-                dd.draw(custom_coordinates, values=w.values, temp=temp)
-            else:
-                dd.draw(g.currently_adding_figure, values=w.values, temp=temp)
+            dd.draw(custom_coordinates if custom_coordinates else g.currently_adding_figure, values=w.values, temp=temp)
+
             return [] # to clear g.currently_drawing.
 
         def select(self):
-            print("passing to dd.select() to select figure.")
-            dd.select(self, selection_area=w.values)
+            dd.select(selection_area=w.values.get("graph"))
 
         def get_graph_dimensions(self):
 
@@ -68,12 +58,14 @@ def start_window():
                 return screen_size
 
             if self.testing:
-                self.window_size = (1000,600)#get_window_size() #
+                self.window_size = (1000,600)
             else:
                 self.window_size = get_window_size()
-            """ Just an approximation for the moment.
-            1/5th for the header
-            grid = 4/5ths wide
+
+            """
+            Note: Just an approximation for the moment. Set properly later.
+            header = 1/5th height
+            grid = 4/5ths width
             """
             self.graph_dimensions = self.window_size[0]*.8, self.window_size[1]*.8
             self.header_height = self.window_size[0]*.2
@@ -90,21 +82,21 @@ def start_window():
 
         def end_current_drawing():
             """ Just exists to clear the current drawing in the case of polygons etc. Later can decide if a polygon should keep drawing even if you've clicked off."""
-            g.currently_adding_figure = []# something like = draw(g.current_figure) first if you want to draw what's left.
+            g.currently_adding_figure = []
 
+        def do_move_and_select(event):
 
-        def do_move_and_select():
             if g.active_tool == "select":
                 if event == "graph+UP":
                     w.select()
             # if click and drag selection:#    g.canvas.find_enclosed()
 
             elif g.active_tool == "move" and g.selected_figure:
-                if event == "graph":
-                    w.move(temp=True)
                 if event == "graph+UP":
                     print("graph UP")
                     w.move()
+                if event == "graph":
+                    w.move(temp=True)
 
         def add_xy(event):
             if event == "graph+UP":
@@ -241,7 +233,6 @@ def start_window():
 
 
         setup_window()
-        w.window_access = window
         g.currently_adding_figure = []
 
         while True and not window.is_closed():
@@ -264,7 +255,7 @@ def start_window():
                         add_xy(event)
 
                     else:
-                        do_move_and_select()
+                        do_move_and_select(event)
 
 
                 elif g.currently_adding_figure:
