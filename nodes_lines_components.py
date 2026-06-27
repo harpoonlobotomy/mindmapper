@@ -3,6 +3,7 @@ Instead of tracking and changing the figure_id on differing instances of lines e
 
 """ Am gong to have the graph here too, but separate. At least for now."""
 
+import traceback
 from uuid import uuid4
 import FreeSimpleGUI as sg
 from tkinter import Canvas
@@ -47,14 +48,15 @@ class graph_data():
 
         self.active_tool:str = "rectangle"
 
-        self.last_coord:tuple[(int,int),(int,int)] = None # literally just here to fix the infinite lines, so I can just store the last one. It's so stupid.
+        self.last_coords:tuple[tuple[int,int], tuple[int,int]] = ((0,0), (0,0))
+        self.last_line:int = None # figure_id for the last line drawn. Can't use instances here as they only exist after mouseup. This has to include temps else it'll always fail.
 
     def clear_all(self):
         self.pointer_index = {}
         self.figure_id_index = {}
         self.selected_figure = None
         self.additional_connection = None
-        self.currently_adding_figure = []
+        self.currently_adding_figure:list = []
         self.temp_figures = []
         g.graph.erase()
 
@@ -73,9 +75,27 @@ class graph_data():
 
         self.temp_figures = []
 
+    def find_nodes_for_line(self) -> tuple[tuple[int,int], tuple[int,int]] | tuple[node, node]:
+
+        if not g.last_coords:
+            print("no last coords to find overlapping")
+            return None, None
+        #g.currently_adding_figure if g.currently_adding_figure else g.canvas.addtag_closest()
+        #g.canvas.addtag_closest(g.last_coords[0][0]-10, g.last_coords[0][1]-10, g.last_coords[0][0]+10, g.last_coords[0][1]+10)
+        from_node = self.canvas.find_overlapping(g.last_coords[0][0]-10, g.last_coords[0][1]-10, g.last_coords[0][0]+10, g.last_coords[0][1]+10)
+
+        to_node = self.canvas.find_overlapping(g.last_coords[1][0]-10, g.last_coords[1][1]-10, g.last_coords[1][0]+10, g.last_coords[1][1]+10)
+
+        if not from_node or not to_node:
+            print("Either no from or no to node at click, returning null.")
+            return None, None
+
+        from_node = desk_drawer.get_node_by_figure_id(from_node[0])
+        to_node = desk_drawer.get_node_by_figure_id(to_node[0])
+        return from_node, to_node
+
 
 g = graph_data()
-
 
 
 
@@ -126,15 +146,14 @@ class component:
 
 
 class node:
-    def __init__(self, figure_id:int, shape:str, bbox:tuple[int]):
+    def __init__(self, figure_id:int, shape:str, bbox=None):
         assert shape in SHAPES
 
         self.node_id = uuid4()
         self.figure_id:int = figure_id
         self.shape:str = shape
-
-        self.centrepoint = bb.get_half_dimensions(bbox)
-
+        if bbox:
+            self.centrepoint = bb.get_half_dimensions(bbox) # for later.
         self.components:set[component] = set()#dict[str:component] = deepcopy(COMPONENTS)
         self.connections:set[line] = set()# = {}
         print(f"Node init: {self}")
@@ -152,6 +171,8 @@ class desk:
         self.components:set[component] = set() # I really shouldn't need this, but I do need to be able to click any component and have it find the match. So I do need a route back from figure_id...
         # temporarily adding this here, but it should be in the class that manages the graph, not here. This is for the elements themselves. It's a desk drawer. graph is the drawing surface.
 
+        #self.add_text:str = "test_text" # this is the presence of text in that box, not actually a var written here. Purely for testing.
+
         self.temp_figures:list[str] = [] # figure_ids for temp items.
 
     def get_node_by_figure_id(self, figure_id):
@@ -163,22 +184,46 @@ class desk:
             components = list(i for i in self.components if i.figure_id == figure_id)
             if components:
                 return components[0].parent if components[0].parent else components[0]
+            #else:
+            #    return list(i for i in self.lines if i.figure_id == figure_id)
 
-
-    def update_node_line_data(self, _node:node, _line:line, new_figure_id):
-        """ This should be a nodes fn probably."""
+    def update_node_line_data(self, _line:line=None, new_figure_id:int=None, from_node:node=None, to_node:node=None):
+        assert isinstance(_line, line)
+        """ This is where the figure_id is changed, and where connections are updated, etc. Nothing about the node instances should change outside of this fn."""
         ## to update:
-        old_id = _node.figure_id
-        _node.figure_id = new_figure_id
+        print(f"node:{node} / line: {line} / new_figure_id: {new_figure_id} in update_node_line_data.\n Here we make sure the coordinate/start/end are up to date, and that both nodes have updated the connection. This runs per node, during the connection check.")
+
+        old_id = _line.figure_id
+        _line.figure_id = new_figure_id
+
+        assert _line.from_node == from_node
+        assert _line.to_node == to_node
+        def remove_previous_connection(from_node:node, to_node:node, new_figure_id):
+
+            for node in (from_node, to_node):
+                print(f"NODE in replace_line: {node.figure_id}\n")
+                if node.connections:
+                    match = list(i for i in node.connections if (i.from_node == from_node and i.to_node == to_node))# or (i.to_node == from_node and i.from_node == to_node))#for connection in from_node.connections: if connection.to_node == to_node:
+                    if match:
+                        print(f"match founbd in node.connections: {match[0]}")
+                        match.figure_id = new_figure_id
+                        print(f"replacing old figure_id with the new one to see if that works: {match}")
+                        return
+        """ Remove/replace anything still using old_id"""
+        """ delete the figure"""
+        """ make sure the coords assigned to line are actually its coordinates. I can just get it from canvas."""
+
         """
         If any existing connections with this to_ and from_ node:
             that's the line you need to redraw.
 
         """
+        if not _line.from_node and _line.to_node:
+            print("Line does not have to_node and from_node; fatal error, no idea how this happened.")
+            traceback.print_tb()
 
-        #
-        print("Here we make sure the coordinate/start/end are up to date, and that both nodes have updated the connection. This runs per node, during the connection check.")
-        print(f"Node to update: {_node.figure_id}")
+        _line.to_node.connections.add(_line)#] = ({"from_node":from_node})
+        _line.from_node.connections.add(_line)#] = ({"to_node":to_node})
 
 
     def create_node_inst(self, figure_id, shape="rectangle", bbox=None):
@@ -194,10 +239,6 @@ class desk:
         line_inst = line(figure_id, from_node, to_node, coords)
         print(f"ADDING {self} TO LINES NOW.")
         self.lines.add(line_inst)
-
-        if from_node and to_node:
-            to_node.connections.add(line_inst)#] = ({"from_node":from_node})
-            from_node.connections.add(line_inst)#] = ({"to_node":to_node})
 
         print(f"Returning line_inst: {line_inst}")
         return line_inst
@@ -251,16 +292,16 @@ class desk:
         sleep(sleeptime)
 
 
-    def move(self, target_loc, exclude_text=False): # almost want to make move() and draw() classes now tbh Separate from desk drawer, I mean.
+    def move(self, target_loc, exclude_text=False):
 
         def draw_newline(existing_line_instance:line, line_start, line_end) -> int:
             line_start = (int(line_start[0]), int(line_start[1]))
             line_end = (int(line_end[0]), int(line_end[1]))
             """returns new_line figure_id"""
-            print(f"in draw_newline. Existing line: {existing_line_instance} // line_start: {line_start} / line_end: {line_end}")
+            """print(f"in draw_newline. Existing line: {existing_line_instance} // line_start: {line_start} / line_end: {line_end}")
             if existing_line_instance.line_start == line_start and existing_line_instance.line_end == line_end:
                 print("Existing instance is already at these positions; returning existing ID, no further action.")
-                return 5
+                return 5"""
             _, outline_colour, line_width = self.get_colour_data(existing_line_instance.figure_id)
             new_line = g.graph.draw_line(line_start, line_end, color=outline_colour, width=line_width)
 
@@ -273,8 +314,6 @@ class desk:
             return
 
         primary_object = g.selected_figure
-
-        # need to cull any unnecessary action here if not before.
 
         luggage = primary_object.components
 
@@ -297,33 +336,37 @@ class desk:
             g.graph.relocate_figure(fig.figure_id, centred[0], centred[1])
 
         if primary_object.connections:
-            new_lines = []
+            print("PRIMARY_OBJECT.CONNECTIONS")
 
             for line_inst in list(primary_object.connections):
-                print(f"Line: {line_inst} / target_loc: {target_loc}")
-                if line_inst.line_end == target_loc or line_inst.line_start == target_loc:#line_start = line_inst.line_start
-                                                #line_end=target_loc
-                    if line_inst.figure_id in g.temp_figures:
-                        g.temp_figures.remove(line_inst.figure_id)
-                    print("The existing one has the same coords, just reuse this.\n---------------------------------------------------\n")
-                    return
-                line_start = line_end = new_line = None
+                line_end = line_start = None
+                print(f"primary object: {primary_object}")
+                if primary_object == line_inst.to_node :
+                    line_start = line_inst.line_start
+                    line_end = target_loc
+                    line_inst.line_end = target_loc
+                    print(f"moving the line's to_node: {primary_object}")
+
+                elif primary_object == line_inst.from_node:
+                    #line_start = target_loc
+                    #line_end = line_inst.line_start
+                    line_start = target_loc
+                    line_end = line_inst.line_end
+                    line_inst.line_start = target_loc
+                    print(f"moving the line's from_node: {primary_object}")
 
 
-                if line_inst.to_node == primary_object:
+                """if line_inst.to_node == primary_object:
                     "check if from_node would also match if created by draw_newline - if so, then the existing instance is perfect and should remain exactly where it is."
                     line_start = line_inst.line_start
-                    line_end=target_loc
 
                 elif line_inst.from_node == primary_object:
                     line_start = line_inst.line_end
-                    line_end=target_loc
 
                 else:
                     print(f"line inst does not match from node or to node: {line_inst.figure_id}")
-                    return
+                    return"""
 
-                line_start = (int(line_start[0]), int(line_start[1]))
                 line_end = (int(line_end[0]), int(line_end[1]))
                 #new_line = draw_newline(line_inst, line_start=target_loc, line_end=line_inst.line_end)
                 new_line = draw_newline(line_inst, line_start=line_start, line_end=line_end)
@@ -367,107 +410,59 @@ class desk:
                     g.graph.delete_figure(figure)
 
 
-    def draw(self, current_drawing_xy:tuple, values:dict, temp=False):
+    def draw(self, coordinates:list, values=None, temp=False): #
+        """ REMEMBER: We do have to keep sending coordinates here, because it might be custom coords. Instead, send it to here, and immediately give it to g. and use that henceforth. Easiest."""
 
-        print(f"current_drawing_xy: {current_drawing_xy} / values: {values}")
+        """     coords = g.currently_adding_figure # don't need to pass it around, can access it anywher.        """
 
-        def find_nodes_for_line():
+        g.currently_adding_figure = coordinates
 
-            from_node = g.canvas.find_overlapping(current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10, current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10)
+        def connect_nodes_with_line(line_figure_id:int, from_node=None, to_node=None):
 
-            to_node = g.canvas.find_overlapping(current_drawing_xy[1][0]-10, current_drawing_xy[1][1]-10, current_drawing_xy[1][0]+10, current_drawing_xy[1][1]+10)
+            coords = g.currently_adding_figure[-1] if g.currently_adding_figure else None
+            if not coords:
+                print("No currently_adding_")
 
             if not from_node or not to_node:
-                print("Either no from or no to node at click, returning null.")
-                return None
+                from_node, to_node = g.find_nodes_for_line() # here I pass it through because sometimes it could be something else.This way the fn doesn't have to find the data itself. I need to get better at that.
 
-            from_node = self.get_node_by_figure_id(from_node[0])
-            to_node = self.get_node_by_figure_id(to_node[0])
-            return from_node, to_node
+            if to_node:
 
-        def make_rectangle(current_drawing_xy):
-            #urrent_drawing_xy = current_drawing_xy[0] # not sure if this is true for all figures, should be, for b or w.
-            print(f"current_drawing_xy: {current_drawing_xy}")
-            rectangle_figure_id = g.graph.draw_rectangle(top_left=current_drawing_xy[0], bottom_right=current_drawing_xy[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
-            """if w.testing:
-                a = g.graph.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width = g.line_width)
-                b = g.graph.draw_line(point_from=(current_drawing_xy[0][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[1][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
-                c = g.graph.draw_line(point_from=(current_drawing_xy[1][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[0][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
+                if line_figure_id in g.temp_figures:
+                    g.temp_figures.remove(line_figure_id)
 
-                for x in (a,b,c):
-                    g.temp_figures.append(x)"""
-
-            if temp:
-                g.temp_figures.append(rectangle_figure_id)
-            else:
-                bbox = g.canvas.bbox(rectangle_figure_id)
-                new_instance = self.create_node_inst(rectangle_figure_id, shape="rectangle", bbox=bbox)#, add_components = values["add_text"])
-
-
-        def make_link(from_node, to_node, link_line_fID):
-
-
-            coords = g.canvas.bbox(link_line_fID)
-            coords = (int(coords[0]), int(coords[1])), (int(coords[2]), int(coords[3]))
-
-        def draw_line(xy_coords):
-
-            line_figure_id = g.graph.draw_line(point_from=xy_coords[0], point_to=current_drawing_xy[1], color=g.line_colour, width=g.line_width)
-
-            #parent_instance = add_figure(figure_id)
-            if temp:
-                g.temp_figures.append(line_figure_id)
-            else:
-                if g.line_type == "polygon": # note: this way of doing polygons doesn't work because you can't move them, selecting selects a specific line, not the full polygon obj.
-                    print("Ignore polygons for now.")
-                    g.selected_figure = new_instance
-                    if values.get("add_text"):
-                        add_text_to_figure_centre(self.get_node_by_figure_id(figure_id=line_figure_id), current_drawing_xy)
-                    return list((current_drawing_xy[1],))
-                else:
-                    if values.get("attach_line_to_node"):
-                        outcome = connect_nodes_with_line(newly_drawn_line_fID=line_figure_id)
-                        print(f"outcome of connect_nodes_with_line: {outcome}")
-                        if outcome == 5:
-                            print("Using the existing instance, just with the new coords and figure_id")
-
-
-        def connect_nodes_with_line(newly_drawn_line_fID):
-
-            print(f"newly drawn fID starting in connect_nodes_with_line: {newly_drawn_line_fID}")
-            from_node, to_node = find_nodes_for_line()
-            print(f"from_node: {from_node} and to_node: {to_node}")
-            if from_node and to_node:
-                make_link(from_node, to_node, newly_drawn_line_fID)
-
-
-                """def remove_previous_connection(from_node, to_node):
-
-                    for _node in (from_node, to_node):
-                        if not isinstance(_node, node):
-                            print("from or to node is not a node-node.")
-                            return
-                        print(f"NODE in replace_line: {_node.figure_id}\n")
-                        if _node.connections:
-                            match = list(i for i in _node.connections if (i.from_node == from_node and i.to_node == to_node) or (i.to_node == from_node and i.from_node == to_node))#for connection in from_node.connections: if connection.to_node == to_node:
-                            if match:
-                                print(f"match founbd in node.connections: {match[0]}")
-                                self.update_node_line_data(_node, _line=match, new_figure_id=newly_drawn_line_fID)
-                                print(f"instance after update_node_line_data: {_node}")
-                                #match.figure_id = newly_drawn_line_fID
-                                #print(f"replacing old figure_id with the new one to see if that works: {match}")
-                                return 5
-                outcome = remove_previous_connection(from_node, to_node)
-
-                new_instance = self.create_line_inst(newly_drawn_line_fID, from_node, to_node, coords=current_drawing_xy)"""
+                line_link = self.create_line_inst(line_figure_id, from_node, to_node, coords=g.currently_adding_figure)
+                self.update_node_line_data(_line=line_link, new_figure_id=line_figure_id, from_node=from_node, to_node=to_node)
 
             else:
                 print(f"not tonode {to_node} and/or fromnode: {from_node}")
-                g.graph.delete_figure(newly_drawn_line_fID)
+            """if from_node and to_node:
+
+                def remove_previous_connection(from_node:node, to_node:node):
+
+                    for node in (from_node, to_node):
+                        print(f"NODE in replace_line: {node.figure_id}\n")
+                        if node.connections:
+                            match = list(i for i in node.connections if (i.from_node == from_node and i.to_node == to_node))# or (i.to_node == from_node and i.from_node == to_node))#for connection in from_node.connections: if connection.to_node == to_node:
+                            if match:
+                                print(f"match founbd in node.connections: {match[0]}")
+                                match.figure_id = line_figure_id
+                                print(f"replacing old figure_id with the new one to see if that works: {match}")
+                                return
+
+                remove_previous_connection(from_node, to_node)
+                if line_figure_id in g.temp_figures:
+                    g.temp_figures.remove(line_figure_id)
+
+                line_link = self.create_line_inst(line_figure_id, from_node, to_node, coords=g.currently_adding_figure)
+                self.update_node_line_data(_line=line_link, new_figure_id=line_figure_id, from_node=from_node, to_node=to_node)
+
+            else:
+                print(f"not tonode {to_node} and/or fromnode: {from_node}")"""
 
             g.selected_figure = to_node if to_node else None
 
-            g.graph.send_figure_to_back(newly_drawn_line_fID)
+            g.graph.send_figure_to_back(line_figure_id)
 
         def add_text_to_figure_centre(leader_instance, current_coords) -> tuple[component, component]:
 
@@ -503,65 +498,103 @@ class desk:
 
         new_instance = None
 
-        """if g.temp_figures:
+        if g.temp_figures: # without this, every temp line remains in place.
             for figure_id in g.temp_figures:
                 g.graph.delete_figure(figure_id)
                 instances = list(i for i in self.nodes if i.figure_id == figure_id)
                 if instances:
                     for i in instances:
                         self.nodes.remove(i)
-                g.temp_figures = []"""
+                g.temp_figures = []
 
         if g.active_tool == "rectangle":
-            make_rectangle(current_drawing_xy)
+            print(f"g.currently_adding_figure: {g.currently_adding_figure}")
+            line_figure_id = g.graph.draw_rectangle(top_left=g.currently_adding_figure[0], bottom_right=g.currently_adding_figure[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
+            """if w.testing:
+                a = g.graph.draw_line(point_from=g.currently_adding_figure[0], point_to=g.currently_adding_figure[1], color=g.line_colour, width = g.line_width)
+                b = g.graph.draw_line(point_from=(g.currently_adding_figure[0][0], g.currently_adding_figure[0][1]), point_to=(g.currently_adding_figure[1][0], g.currently_adding_figure[1][1]), color=g.line_colour, width = g.line_width)
+                c = g.graph.draw_line(point_from=(g.currently_adding_figure[1][0], g.currently_adding_figure[0][1]), point_to=(g.currently_adding_figure[0][0], g.currently_adding_figure[1][1]), color=g.line_colour, width = g.line_width)
 
+                for x in (a,b,c):
+                    g.temp_figures.append(x)"""
+
+            if temp:
+                g.temp_figures.append(line_figure_id)
+            else:
+                new_instance = self.create_node_inst(line_figure_id, shape="rectangle")#, add_components = values["add_text"])
 
         elif g.active_tool == "circle":
             import math
-            d = math.sqrt((current_drawing_xy[1][0] - current_drawing_xy[0][0])**2 + (current_drawing_xy[1][1] - current_drawing_xy[0][1])**2) # for properly round circles.
+            d = math.sqrt((g.currently_adding_figure[1][0] - g.currently_adding_figure[0][0])**2 + (g.currently_adding_figure[1][1] - g.currently_adding_figure[0][1])**2) # for properly round circles.
 
-            circle_figure_id = g.graph.draw_oval(top_left=current_drawing_xy[0], bottom_right=current_drawing_xy[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
+            line_figure_id = g.graph.draw_oval(top_left=g.currently_adding_figure[0], bottom_right=g.currently_adding_figure[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
             #figure = g.graph.draw_circle(center_location=current_figure[0], radius=d, fill_color=g.fill_colour, line_color=g.line_colour)
             if temp:
-                g.temp_figures.append(circle_figure_id)
+                g.temp_figures.append(line_figure_id)
             else:
-                bbox = g.canvas.bbox(circle_figure_id)
-                new_instance = self.create_node_inst(circle_figure_id, shape="circle", bbox = bbox)
+                #g.figures.append(figure)
+                new_instance = self.create_node_inst(line_figure_id, shape="circle")#,
+                #g.selected_figure = new_instance
+                #if values.get("add_text"):
+                #    add_text_to_figure_centre(new_instance, g.currently_adding_figure)
 
         elif g.active_tool == "line":
 
-            draw_line(current_drawing_xy)
+            line_figure_id = g.graph.draw_line(point_from=g.currently_adding_figure[0], point_to=g.currently_adding_figure[1], color=g.line_colour, width=g.line_width)
+
+            #parent_instance = add_figure(figure_id)
+            if temp:
+                g.temp_figures.append(line_figure_id)
+            else:
+                if g.line_type == "polygon": # note: this way of doing polygons doesn't work because you can't move them, selecting selects a specific line, not the full polygon obj.
+                    print("Ignore polygons for now.")
+
+                else:
+                    g.last_coords = (g.currently_adding_figure[0], g.currently_adding_figure[1])
+                    connect_nodes_with_line(line_figure_id=line_figure_id)
 
 
-
-# just turning off the components for now.
-        """if new_instance and values["add_text"]:
+        if new_instance and values["add_text"]:
             self.create_component_insts(new_instance)
 
-            figs = add_text_to_figure_centre(new_instance, current_drawing_xy)
+            figs = add_text_to_figure_centre(new_instance, g.currently_adding_figure)
 
             if new_instance.components:
                 for comp in new_instance.components:
                     g.graph.bring_figure_to_front(comp.figure_id)
-            """
-
+            g.selected_figure = new_instance
 
         return []
 
-    def select(self, selection_area):
-        print(f"selection area: {selection_area}")
+    def select(self, selection_area=None): # selection defaults to clickposition.
+
         figures = g.graph.get_figures_at_location(selection_area) # this needs to be 'closest to mouse click' will work on it later.
         if not figures:
             print("No figures at location.")
             return
-        #print(f"Figures at this location: {figures}")
-        figure = figures[0] if figures else None
-
-        #print(f"g.canvas coords for newly selected figure: {g.canvas.coords(figure)} / figure: {figure}")
+        figure = figures[0]
         primary_object = self.get_node_by_figure_id(figure)#dd.get_node_by_figure_id(figure_id=figure)
         if not primary_object:
             print("No selection found, returning.")
             return
+        """
+
+        selected_tag = "selected"
+        prev_selected = g.canvas.find_withtag(selected_tag)
+        if prev_selected:
+            for prev in prev_selected:
+                g.canvas.dtag(prev, selected_tag)
+
+        coords = g.graph.ClickPosition #== the last place you mouse-up'd.
+        g.canvas.addtag_closest(newtag=selected_tag, x=coords[0], y=coords[1])
+        matches = g.canvas.find_withtag(selected_tag)
+        if not matches:
+            print("Nothing at the click site. Returning.")
+            return
+        #print(f"Figures at this location: {figures}")
+        figure = matches[0] if matches else None
+        assert len(matches) == 1 # oh now I get why they're better than print statements. They only print when something goes wrong. Ahhhhh.
+"""
 
         if primary_object.components:
             """
@@ -576,74 +609,3 @@ class desk:
         print(f"selected: {g.selected_figure.figure_id}")
 
 desk_drawer = desk()
-
-"""     These are all elements that should be in the main script, not here.
-def draw_line(start, end, temp=False):
-
-    ### Oh. I could have a defined graph 'layer' for lines, and draw them all at that height, and same for primary shapes/text/etc. Oh I should actually do that.
-
-    line_figure_id = 1#"draw_line_fn(start, end)"
-
-    if temp:
-        # move to back
-        drawer.temp_figures.append(line_figure_id)
-
-    # here we check for start/end nodes
-    start_node, end_node = node_1, node_2#"checking fn"
-
-    drawer.create_line_inst(line_figure_id, from_node=start_node, to_node=end_node)
-    # Then move the line to the back
-
-
-def draw_rectangle(start, end, temp=False):
-
-    force_square=False # get this from the gui
-    if force_square:
-        "make radio 1:1 when drawing. Whichever is larger, x or y."
-
-    # here grab the radius for rounded corners.
-
-    rect_figure_id = 2 # draw_rectangle(top_left, bottom_right)
-
-    if temp:
-        drawer.temp_figures.append(rect_figure_id)
-
-    node_inst = drawer.create_node_inst(rect_figure_id, shape="rectangle")
-    return node_inst
-
-
-def draw_circle(start, end):
-
-    force_round=False # get this from the gui
-
-    if not force_round:
-        circle_figure_id = 3 # draw_oval(start, end)
-    else:
-        distance = 60 # math.sqrt((end[0] - start[0])**2 + (end[1] - start[1])**2)
-        circle_figure_id = 3 # draw_circle(start, distance)
-
-    drawer.create_node_inst(circle_figure_id, shape="circle")
-
-
-
-node_1 = draw_rectangle(start=(0,0), end=(200,200))
-
-node_2 = draw_rectangle(start=(400,400), end=(600,600))
-
- line_xy = (190,195), (403,400)
-
-line_figure_id = 3#draw_line(start=line_xy[0], end=line_xy[1])
-line_inst = drawer.create_line_inst(figure_id=line_figure_id, from_node=node_1, to_node=node_2)
-
-#print(f"drawer.nodes: {drawer.nodes}")
-#for node_inst in drawer.nodes:
-#    print(f"node_inst: {node_inst.__dir__}")
-
-
-for line_inst in drawer.lines:
-    print(f"\n\nline inst: {line_inst}\n\n\n")
-
-
-
-## Maybe lines can /only/ connect two things. Trying to draw a line that doesn't go anywhre just disappears. I hate that though. no.
-"""

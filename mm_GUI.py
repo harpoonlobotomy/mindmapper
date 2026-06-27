@@ -35,7 +35,7 @@ def start_window():
 
 
         def draw(self, temp=False, custom_coordinates=None):
-            print(f"custom coordinates: {custom_coordinates} / values: {w.values} / temp: {temp}")
+            #print(f"custom coordinates: {custom_coordinates} / values: {w.values} / temp: {temp}")
             _nodes.draw(custom_coordinates if custom_coordinates else g.currently_adding_figure, values=w.values, temp=temp)
 
             return [] # to clear g.currently_drawing.
@@ -86,10 +86,9 @@ def start_window():
             g.currently_adding_figure = []
 
         def do_move_and_select(event):
-            if event == "graph+UP":
-                print(f"Figure count: {len(g.canvas.find_all())}")
-                print(f"len(dd.lines): {len(_nodes.lines)}\n\n")
-                print(f"g.current coords: {g.currently_adding_figure}")
+           # if event == "graph+UP":
+                #print(f"Figure count: {len(g.canvas.find_all())}")
+                #print(f"len(dd.lines): {len(_nodes.lines)}\n\n")
 
             if g.active_tool == "select":
                 if event == "graph+UP":
@@ -106,27 +105,28 @@ def start_window():
         def add_xy(event):
 
             ending = w.values["graph"]
-            
+
             if event == "graph+UP":
                 g.currently_adding_figure.append(ending)
                 g.currently_adding_figure = w.draw()
                 g.last_coord = None
 
             else:
-                if g.currently_adding_figure and g.last_coord and g.last_coord == (g.currently_adding_figure[0], ending):
-                    print(f"SAME AS PREVIOUS, IGNORE. currently_adding_figure: {g.currently_adding_figure} / ending: {ending}") # is tuple in a list
-                    g.currently_adding_figure = []
-                    return
-                else:
-                    print(f"Not returning as not same coords")
+                #if g.currently_adding_figure and g.last_coord and g.last_coord == (g.currently_adding_figure[0], ending):
+                #    print(f"SAME AS PREVIOUS, IGNORE. currently_adding_figure: {g.currently_adding_figure} / ending: {ending}") # is tuple in a list
+                #    g.currently_adding_figure = []
+                #    return
+                #else:
+                #    print(f"Not returning as not same coords")
                 if not g.currently_adding_figure:
                     g.currently_adding_figure.append(ending)
 
                 else:
-                    w.draw(temp=True, custom_coordinates=(g.currently_adding_figure[0], ending))
+                    print(f"g.currently_adding_figure[0], ending: {g.currently_adding_figure[0], ending} 000")
+                    w.draw(temp=True, custom_coordinates=list((g.currently_adding_figure[0], ending)))
+
                     g.last_coord = (g.currently_adding_figure[0], ending)
 
-                g.last_coord = (g.currently_adding_figure[0], ending)
 
         def select_tool(event:str):
             assert g.active_tool in ("rectangle", "circle", "line", "select", "move") if g.active_tool else False
@@ -146,6 +146,7 @@ def start_window():
 
 
         def simple_radio(group="select_tool", button_name:str="select", is_default_true=False) -> sg.Radio[str, str]:
+
             if len(button_name) == 1:
                 key = group + button_name
             else:
@@ -153,30 +154,13 @@ def start_window():
 
             return sg.Radio(text=button_name, group_id=group, default=is_default_true, key=key.lower().replace(" ", "_"), enable_events=True)
 
-        def simple_button(button_name:str) -> sg.Button:
-            #return [sg.Button(button_text=button_name, key=button_name.replace(" ","_").lower())],
-    # TODO: make placeholder images for header buttons ( + button panel buttons later too)
+
+        def simple_button(button_name:str) -> sg.Button:     # TODO: make placeholder images for header buttons ( + button panel buttons later too)
+
             return sg.Button(button_text=button_name, key=button_name.replace(" ","_").lower())
 
 
         def tool_options() -> list:
-            """
-            radio buttons:
-                select mode: select_one, add_to_selection, remove_from_selection, clear_selection
-
-                rectangle mode: round_edges, hard_edges, set_ratio
-                    * if set_ratio: option to set ratio to x:y
-                    * if round_edges: radius of round edges
-
-                circle_mode: set_ratio checkbox
-                    * if set_ratio: option to set ratio to x:y
-
-                line mode: single_line, polygon
-                    * if polygon:
-                        fill_polygon (checkbox)
-
-            Just going to hide/show panels here.
-            """
 
             select_buttons = sg.Column(layout=[[simple_radio(group="select", button_name="select one"), simple_radio(group="select", button_name="add to selection"), simple_radio(group="select", button_name="remove from selection")], [simple_button(button_name="clear selection")]], key="tool_buttons_select", visible=False)
 
@@ -273,7 +257,6 @@ def start_window():
 
                     else:
                         do_move_and_select(event)
-
 
 
                 elif g.currently_adding_figure:
