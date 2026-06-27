@@ -47,7 +47,7 @@ class graph_data():
 
         self.active_tool:str = "rectangle"
 
-        self.last_line:line = None # literally just here to fix the infinite lines, so I can just store the last one. It's so stupid.
+        self.last_coord:tuple[(int,int),(int,int)] = None # literally just here to fix the infinite lines, so I can just store the last one. It's so stupid.
 
     def clear_all(self):
         self.pointer_index = {}
@@ -251,7 +251,7 @@ class desk:
         sleep(sleeptime)
 
 
-    def move(self, target_loc, exclude_text=False):
+    def move(self, target_loc, exclude_text=False): # almost want to make move() and draw() classes now tbh Separate from desk drawer, I mean.
 
         def draw_newline(existing_line_instance:line, line_start, line_end) -> int:
             line_start = (int(line_start[0]), int(line_start[1]))
@@ -273,6 +273,8 @@ class desk:
             return
 
         primary_object = g.selected_figure
+
+        # need to cull any unnecessary action here if not before.
 
         luggage = primary_object.components
 
@@ -367,6 +369,8 @@ class desk:
 
     def draw(self, current_drawing_xy:tuple, values:dict, temp=False):
 
+        print(f"current_drawing_xy: {current_drawing_xy} / values: {values}")
+
         def find_nodes_for_line():
 
             from_node = g.canvas.find_overlapping(current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10, current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10)
@@ -381,15 +385,63 @@ class desk:
             to_node = self.get_node_by_figure_id(to_node[0])
             return from_node, to_node
 
+        def make_rectangle(current_drawing_xy):
+            #urrent_drawing_xy = current_drawing_xy[0] # not sure if this is true for all figures, should be, for b or w.
+            print(f"current_drawing_xy: {current_drawing_xy}")
+            rectangle_figure_id = g.graph.draw_rectangle(top_left=current_drawing_xy[0], bottom_right=current_drawing_xy[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
+            """if w.testing:
+                a = g.graph.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width = g.line_width)
+                b = g.graph.draw_line(point_from=(current_drawing_xy[0][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[1][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
+                c = g.graph.draw_line(point_from=(current_drawing_xy[1][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[0][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
+
+                for x in (a,b,c):
+                    g.temp_figures.append(x)"""
+
+            if temp:
+                g.temp_figures.append(rectangle_figure_id)
+            else:
+                bbox = g.canvas.bbox(rectangle_figure_id)
+                new_instance = self.create_node_inst(rectangle_figure_id, shape="rectangle", bbox=bbox)#, add_components = values["add_text"])
+
+
+        def make_link(from_node, to_node, link_line_fID):
+
+
+            coords = g.canvas.bbox(link_line_fID)
+            coords = (int(coords[0]), int(coords[1])), (int(coords[2]), int(coords[3]))
+
+        def draw_line(xy_coords):
+
+            line_figure_id = g.graph.draw_line(point_from=xy_coords[0], point_to=current_drawing_xy[1], color=g.line_colour, width=g.line_width)
+
+            #parent_instance = add_figure(figure_id)
+            if temp:
+                g.temp_figures.append(line_figure_id)
+            else:
+                if g.line_type == "polygon": # note: this way of doing polygons doesn't work because you can't move them, selecting selects a specific line, not the full polygon obj.
+                    print("Ignore polygons for now.")
+                    g.selected_figure = new_instance
+                    if values.get("add_text"):
+                        add_text_to_figure_centre(self.get_node_by_figure_id(figure_id=line_figure_id), current_drawing_xy)
+                    return list((current_drawing_xy[1],))
+                else:
+                    if values.get("attach_line_to_node"):
+                        outcome = connect_nodes_with_line(newly_drawn_line_fID=line_figure_id)
+                        print(f"outcome of connect_nodes_with_line: {outcome}")
+                        if outcome == 5:
+                            print("Using the existing instance, just with the new coords and figure_id")
+
+
         def connect_nodes_with_line(newly_drawn_line_fID):
-            from_node = g.canvas.find_overlapping(current_drawing_xy[0][0]-10, current_drawing_xy[0][1]-10, current_drawing_xy[0][0]+10, current_drawing_xy[0][1]+10)
 
-            to_node = g.canvas.find_overlapping(current_drawing_xy[1][0]-10, current_drawing_xy[1][1]-10, current_drawing_xy[1][0]+10, current_drawing_xy[1][1]+10)
-
-            from_node = self.get_node_by_figure_id(from_node[0])
-            to_node = self.get_node_by_figure_id(to_node[0])
+            print(f"newly drawn fID starting in connect_nodes_with_line: {newly_drawn_line_fID}")
+            from_node, to_node = find_nodes_for_line()
+            print(f"from_node: {from_node} and to_node: {to_node}")
             if from_node and to_node:
-                def remove_previous_connection(from_node, to_node):
+                make_link(from_node, to_node, newly_drawn_line_fID)
+
+
+                """def remove_previous_connection(from_node, to_node):
 
                     for _node in (from_node, to_node):
                         if not isinstance(_node, node):
@@ -407,10 +459,11 @@ class desk:
                                 return 5
                 outcome = remove_previous_connection(from_node, to_node)
 
-                new_instance = self.create_line_inst(newly_drawn_line_fID, from_node, to_node, coords=current_drawing_xy)
+                new_instance = self.create_line_inst(newly_drawn_line_fID, from_node, to_node, coords=current_drawing_xy)"""
 
             else:
                 print(f"not tonode {to_node} and/or fromnode: {from_node}")
+                g.graph.delete_figure(newly_drawn_line_fID)
 
             g.selected_figure = to_node if to_node else None
 
@@ -450,30 +503,18 @@ class desk:
 
         new_instance = None
 
-        if g.temp_figures:
+        """if g.temp_figures:
             for figure_id in g.temp_figures:
                 g.graph.delete_figure(figure_id)
                 instances = list(i for i in self.nodes if i.figure_id == figure_id)
                 if instances:
                     for i in instances:
                         self.nodes.remove(i)
-                g.temp_figures = []
+                g.temp_figures = []"""
 
         if g.active_tool == "rectangle":
-            rectangle_figure_id = g.graph.draw_rectangle(top_left=current_drawing_xy[0], bottom_right=current_drawing_xy[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
-            """if w.testing:
-                a = g.graph.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width = g.line_width)
-                b = g.graph.draw_line(point_from=(current_drawing_xy[0][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[1][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
-                c = g.graph.draw_line(point_from=(current_drawing_xy[1][0], current_drawing_xy[0][1]), point_to=(current_drawing_xy[0][0], current_drawing_xy[1][1]), color=g.line_colour, width = g.line_width)
+            make_rectangle(current_drawing_xy)
 
-                for x in (a,b,c):
-                    g.temp_figures.append(x)"""
-
-            if temp:
-                g.temp_figures.append(rectangle_figure_id)
-            else:
-                bbox = g.canvas.bbox(rectangle_figure_id)
-                new_instance = self.create_node_inst(rectangle_figure_id, shape="rectangle", bbox=bbox)#, add_components = values["add_text"])
 
         elif g.active_tool == "circle":
             import math
@@ -489,23 +530,8 @@ class desk:
 
         elif g.active_tool == "line":
 
-            line_figure_id = g.graph.draw_line(point_from=current_drawing_xy[0], point_to=current_drawing_xy[1], color=g.line_colour, width=g.line_width)
+            draw_line(current_drawing_xy)
 
-            #parent_instance = add_figure(figure_id)
-            if temp:
-                g.temp_figures.append(line_figure_id)
-            else:
-                if g.line_type == "polygon": # note: this way of doing polygons doesn't work because you can't move them, selecting selects a specific line, not the full polygon obj.
-                    print("Ignore polygons for now.")
-                    g.selected_figure = new_instance
-                    if values.get("add_text"):
-                        add_text_to_figure_centre(self.get_node_by_figure_id(figure_id=line_figure_id), current_drawing_xy)
-                    return list((current_drawing_xy[1],))
-                else:
-                    if values.get("attach_line_to_node"):
-                        outcome = connect_nodes_with_line(newly_drawn_line=line_figure_id)
-                        if outcome == 5:
-                            print("Using the existing instance, just with the new coords and figure_id")
 
 
 # just turning off the components for now.

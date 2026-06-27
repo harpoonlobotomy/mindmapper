@@ -3,7 +3,7 @@
 import FreeSimpleGUI as sg
 import nodes_lines_components as nodes
 
-dd = nodes.desk_drawer
+_nodes = nodes.desk_drawer
 
 CAN_RATIO = ("rectangle", "circle")
 
@@ -31,16 +31,17 @@ def start_window():
             if not g.selected_figure:
                 #TODO: get figure at xy if any and set selected.
                 return
-            dd.move(target_loc=w.values["graph"], exclude_text=temp)
+            _nodes.move(target_loc=w.values["graph"], exclude_text=temp)
 
 
         def draw(self, temp=False, custom_coordinates=None):
-            dd.draw(custom_coordinates if custom_coordinates else g.currently_adding_figure, values=w.values, temp=temp)
+            print(f"custom coordinates: {custom_coordinates} / values: {w.values} / temp: {temp}")
+            _nodes.draw(custom_coordinates if custom_coordinates else g.currently_adding_figure, values=w.values, temp=temp)
 
             return [] # to clear g.currently_drawing.
 
         def select(self):
-            dd.select(selection_area=w.values.get("graph"))
+            _nodes.select(selection_area=w.values.get("graph"))
 
         def get_graph_dimensions(self):
 
@@ -87,7 +88,7 @@ def start_window():
         def do_move_and_select(event):
             if event == "graph+UP":
                 print(f"Figure count: {len(g.canvas.find_all())}")
-                print(f"len(dd.lines): {len(dd.lines)}\n\n")
+                print(f"len(dd.lines): {len(_nodes.lines)}\n\n")
                 print(f"g.current coords: {g.currently_adding_figure}")
 
             if g.active_tool == "select":
@@ -103,17 +104,29 @@ def start_window():
                     w.move(temp=True)
 
         def add_xy(event):
+
+            ending = w.values["graph"]
+            
             if event == "graph+UP":
-                g.currently_adding_figure.append(w.values["graph"])
+                g.currently_adding_figure.append(ending)
                 g.currently_adding_figure = w.draw()
+                g.last_coord = None
 
             else:
+                if g.currently_adding_figure and g.last_coord and g.last_coord == (g.currently_adding_figure[0], ending):
+                    print(f"SAME AS PREVIOUS, IGNORE. currently_adding_figure: {g.currently_adding_figure} / ending: {ending}") # is tuple in a list
+                    g.currently_adding_figure = []
+                    return
+                else:
+                    print(f"Not returning as not same coords")
                 if not g.currently_adding_figure:
-                    g.currently_adding_figure.append(w.values["graph"])
+                    g.currently_adding_figure.append(ending)
 
                 else:
-                    ending = values["graph"]
                     w.draw(temp=True, custom_coordinates=(g.currently_adding_figure[0], ending))
+                    g.last_coord = (g.currently_adding_figure[0], ending)
+
+                g.last_coord = (g.currently_adding_figure[0], ending)
 
         def select_tool(event:str):
             assert g.active_tool in ("rectangle", "circle", "line", "select", "move") if g.active_tool else False
