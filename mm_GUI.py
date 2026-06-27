@@ -246,6 +246,8 @@ def start_window():
 
                 if event == "new":
                     print("event new")
+                    g.clear_all()
+                    
                     g.graph.erase()
                     print("also a fn here to clear all the data regarding said figures.")
 
