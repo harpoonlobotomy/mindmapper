@@ -58,7 +58,7 @@ def start_window():
                 return screen_size
 
             if self.testing:
-                self.window_size = (1000,600)
+                self.window_size = (500,500)
             else:
                 self.window_size = get_window_size()
 
@@ -85,6 +85,10 @@ def start_window():
             g.currently_adding_figure = []
 
         def do_move_and_select(event):
+            if event == "graph+UP":
+                print(f"Figure count: {len(g.canvas.find_all())}")
+                print(f"len(dd.lines): {len(dd.lines)}\n\n")
+                print(f"g.current coords: {g.currently_adding_figure}")
 
             if g.active_tool == "select":
                 if event == "graph+UP":
@@ -256,6 +260,7 @@ def start_window():
 
                     else:
                         do_move_and_select(event)
+
 
 
                 elif g.currently_adding_figure:
