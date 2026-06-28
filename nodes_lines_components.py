@@ -63,6 +63,8 @@ class graph_data():
         self.last_line:int = None # figure_id for the last line drawn. Can't use instances here as they only exist after mouseup. This has to include temps else it'll always fail.
         self.current_text = ""
         self.changing_text:bool = False
+        self.start_coords:tuple[int,int] = None
+        self.end_coords:tuple[int,int] = None # not for any particular figure/instance, just the last click-and-drag/click event start/end.
 
     def clear_all(self):
         self.pointer_index = {}
@@ -548,7 +550,7 @@ class desk:
 
         return []
 
-    def select(self, selection_area=None): # selection defaults to clickposition.
+    def select(self, selection_area=None, no_jiggle=False): # selection defaults to clickposition.
 
         figures = g.graph.get_figures_at_location(selection_area) # this needs to be 'closest to mouse click' will work on it later.
         if not figures:
@@ -558,6 +560,11 @@ class desk:
         primary_object = self.get_node_by_figure_id(figure)#dd.get_node_by_figure_id(figure_id=figure)
         if not primary_object:
             print("No selection found, returning.")
+            return
+
+        g.selected_figure = primary_object
+        print(f"selected: {g.selected_figure.figure_id}")
+        if no_jiggle:
             return
         """
 
@@ -587,7 +594,6 @@ class desk:
                 self.jiggle_figure(component)
 
         self.jiggle_figure(primary_object)
-        g.selected_figure = primary_object
-        print(f"selected: {g.selected_figure.figure_id}")
+
 
 desk_drawer = desk()

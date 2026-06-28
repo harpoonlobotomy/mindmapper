@@ -41,8 +41,8 @@ def start_window():
 
             return [] # to clear g.currently_drawing.
 
-        def select(self):
-            _nodes.select(selection_area=w.values.get("graph"))
+        def select(self, no_jiggle=False):
+            _nodes.select(selection_area=g.graph.ClickPosition, no_jiggle=no_jiggle)
 
         def get_graph_dimensions(self):
 
@@ -97,9 +97,25 @@ def start_window():
             # if click and drag selection:#    g.canvas.find_enclosed()
 
             elif g.active_tool == "move" and g.selected_figure:
+# here to figure out if it needs to change the selected item based on where the click started.
+                ending = w.values["graph"]
+
+                if not g.start_coords:
+                    g.start_coords = g.graph.ClickPosition
+                    local_figures = g.graph.GetFiguresAtLocation(g.start_coords)
+
+                    if local_figures:
+                        already_selected = list(i for i in local_figures if g.selected_figure and i == g.selected_figure.figure_id)
+                        if already_selected:
+                            pass
+                        else:
+                            w.select(no_jiggle=True)
+
                 if event == "graph+UP":
                     print("graph UP")
                     w.move()
+                    g.start_coords = None
+                    g.end_coords = g.graph.ClickPosition
                 if event == "graph":
                     w.move(temp=True)
 
@@ -255,7 +271,6 @@ def start_window():
             if event and event != "__TIMEOUT__":
 
                 if g.changing_text and event != "add_text":
-                    print(f"CHANGING_TEXT IS TRUTHY: {g.changing_text}")
                     if len(event) != 1:
                         g.current_text = g.add_text.get()
                         g.changing_text = False
@@ -269,18 +284,15 @@ def start_window():
                 if (isinstance(event, str) and event.startswith("Escape")) or window.is_closed():
                     break
 
-                if event == "add_text" and event != g.current_text:
-                    print(f"event == add_text so going to update g.current_text to values[add_text], which is currently: {values["add_text"]}")
+                if event == "add_text":
                     g.current_text = values["add_text"]
 
                 if event == "new":
-                    print("event new")
-                    g.clear_all()
+                    print("New doesn't work yet.")
+                    """g.clear_all()
+                    g.graph.erase()"""
 
-                    g.graph.erase()
-                    print("also a fn here to clear all the data regarding said figures.")
 
-                #print(f"EVENT: {event}")
                 if event.startswith("graph"):
 
                     if g.active_tool in ("rectangle", "circle", "line"):
