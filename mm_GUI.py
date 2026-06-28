@@ -1,10 +1,9 @@
 """Minimim viable product GUI"""
 
 import FreeSimpleGUI as sg
-from tkinter import Canvas
 import nodes_lines_components as nodes
 
-dd = nodes.desk_drawer
+_nodes = nodes.desk_drawer
 
 CAN_RATIO = ("rectangle", "circle")
 
@@ -16,7 +15,6 @@ def start_window():
         def __init__(self):
             self.testing = True
 
-            self.window_access = None
             self.values = {}
 
             self.window_size:tuple[int,int] = (1600,1920)
@@ -31,26 +29,19 @@ def start_window():
 
         def move(self, temp=False):
             if not g.selected_figure:
-                print("get item at mouse pos if any, else still leave.")
-                print("no selected item or item at mouse loc to move .")
+                #TODO: get figure at xy if any and set selected.
                 return
-            print("passing to dd.move to move selected figure")
-            dd.move(target_loc=w.values["graph"], exclude_text=temp)
+            _nodes.move(target_loc=w.values["graph"], exclude_text=temp)
 
-            print("move signposting; no actual logic here if poss tho.")
-            # also: do not require select, autoselect the thing clicked on /if/ it's the first time during the mousedown. Once a thing has been autoselected, no more autoselect until mouseup.
 
         def draw(self, temp=False, custom_coordinates=None):
-            print("passing to dd.draw() to draw figure.")
-            if custom_coordinates:
-                dd.draw(custom_coordinates, values=w.values, temp=temp)
-            else:
-                dd.draw(g.currently_adding_figure, values=w.values, temp=temp)
+            #print(f"custom coordinates: {custom_coordinates} / values: {w.values} / temp: {temp}")
+            _nodes.draw(custom_coordinates if custom_coordinates else g.currently_adding_figure, values=w.values, temp=temp)
+
             return [] # to clear g.currently_drawing.
 
         def select(self):
-            print("passing to dd.select() to select figure.")
-            dd.select(selection_area=w.values["graph"])
+            _nodes.select(selection_area=w.values.get("graph"))
 
         def get_graph_dimensions(self):
 
@@ -68,12 +59,14 @@ def start_window():
                 return screen_size
 
             if self.testing:
-                self.window_size = (1000,600)#get_window_size() #
+                self.window_size = (500,500)
             else:
                 self.window_size = get_window_size()
-            """ Just an approximation for the moment.
-            1/5th for the header
-            grid = 4/5ths wide
+
+            """
+            Note: Just an approximation for the moment. Set properly later.
+            header = 1/5th height
+            grid = 4/5ths width
             """
             self.graph_dimensions = self.window_size[0]*.8, self.window_size[1]*.8
             self.header_height = self.window_size[0]*.2
@@ -90,34 +83,50 @@ def start_window():
 
         def end_current_drawing():
             """ Just exists to clear the current drawing in the case of polygons etc. Later can decide if a polygon should keep drawing even if you've clicked off."""
-            g.currently_adding_figure = []# something like = draw(g.current_figure) first if you want to draw what's left.
+            g.currently_adding_figure = []
 
+        def do_move_and_select(event):
+           # if event == "graph+UP":
+                #print(f"Figure count: {len(g.canvas.find_all())}")
+                #print(f"len(dd.lines): {len(_nodes.lines)}\n\n")
 
-        def do_move_and_select():
             if g.active_tool == "select":
                 if event == "graph+UP":
                     w.select()
             # if click and drag selection:#    g.canvas.find_enclosed()
 
             elif g.active_tool == "move" and g.selected_figure:
-                if event == "graph":
-                    w.move(temp=True)
                 if event == "graph+UP":
                     print("graph UP")
                     w.move()
+                if event == "graph":
+                    w.move(temp=True)
 
         def add_xy(event):
+
+            ending = w.values["graph"]
+
             if event == "graph+UP":
-                g.currently_adding_figure.append(w.values["graph"])
+                g.currently_adding_figure.append(ending)
                 g.currently_adding_figure = w.draw()
+                g.last_coord = None
 
             else:
+                #if g.currently_adding_figure and g.last_coord and g.last_coord == (g.currently_adding_figure[0], ending):
+                #    print(f"SAME AS PREVIOUS, IGNORE. currently_adding_figure: {g.currently_adding_figure} / ending: {ending}") # is tuple in a list
+                #    g.currently_adding_figure = []
+                #    return
+                #else:
+                #    print(f"Not returning as not same coords")
                 if not g.currently_adding_figure:
-                    g.currently_adding_figure.append(w.values["graph"])
+                    g.currently_adding_figure.append(ending)
 
                 else:
-                    ending = values["graph"]
-                    w.draw(temp=True, custom_coordinates=(g.currently_adding_figure[0], ending))
+                    print(f"g.currently_adding_figure[0], ending: {g.currently_adding_figure[0], ending} 000")
+                    w.draw(temp=True, custom_coordinates=list((g.currently_adding_figure[0], ending)))
+
+                    g.last_coord = (g.currently_adding_figure[0], ending)
+
 
         def select_tool(event:str):
             assert g.active_tool in ("rectangle", "circle", "line", "select", "move") if g.active_tool else False
@@ -137,6 +146,7 @@ def start_window():
 
 
         def simple_radio(group="select_tool", button_name:str="select", is_default_true=False) -> sg.Radio[str, str]:
+
             if len(button_name) == 1:
                 key = group + button_name
             else:
@@ -144,30 +154,13 @@ def start_window():
 
             return sg.Radio(text=button_name, group_id=group, default=is_default_true, key=key.lower().replace(" ", "_"), enable_events=True)
 
-        def simple_button(button_name:str) -> sg.Button:
-            #return [sg.Button(button_text=button_name, key=button_name.replace(" ","_").lower())],
-    # TODO: make placeholder images for header buttons ( + button panel buttons later too)
+
+        def simple_button(button_name:str) -> sg.Button:     # TODO: make placeholder images for header buttons ( + button panel buttons later too)
+
             return sg.Button(button_text=button_name, key=button_name.replace(" ","_").lower())
 
 
         def tool_options() -> list:
-            """
-            radio buttons:
-                select mode: select_one, add_to_selection, remove_from_selection, clear_selection
-
-                rectangle mode: round_edges, hard_edges, set_ratio
-                    * if set_ratio: option to set ratio to x:y
-                    * if round_edges: radius of round edges
-
-                circle_mode: set_ratio checkbox
-                    * if set_ratio: option to set ratio to x:y
-
-                line mode: single_line, polygon
-                    * if polygon:
-                        fill_polygon (checkbox)
-
-            Just going to hide/show panels here.
-            """
 
             select_buttons = sg.Column(layout=[[simple_radio(group="select", button_name="select one"), simple_radio(group="select", button_name="add to selection"), simple_radio(group="select", button_name="remove from selection")], [simple_button(button_name="clear selection")]], key="tool_buttons_select", visible=False)
 
@@ -241,7 +234,6 @@ def start_window():
 
 
         setup_window()
-        w.window_access = window
         g.currently_adding_figure = []
 
         while True and not window.is_closed():
@@ -254,6 +246,8 @@ def start_window():
 
                 if event == "new":
                     print("event new")
+                    g.clear_all()
+                    
                     g.graph.erase()
                     print("also a fn here to clear all the data regarding said figures.")
 
@@ -264,7 +258,7 @@ def start_window():
                         add_xy(event)
 
                     else:
-                        do_move_and_select()
+                        do_move_and_select(event)
 
 
                 elif g.currently_adding_figure:
