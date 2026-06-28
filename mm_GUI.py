@@ -122,7 +122,6 @@ def start_window():
                     g.currently_adding_figure.append(ending)
 
                 else:
-                    print(f"g.currently_adding_figure[0], ending: {g.currently_adding_figure[0], ending} 000")
                     w.draw(temp=True, custom_coordinates=list((g.currently_adding_figure[0], ending)))
 
                     g.last_coord = (g.currently_adding_figure[0], ending)
@@ -247,7 +246,7 @@ def start_window():
                 if event == "new":
                     print("event new")
                     g.clear_all()
-                    
+
                     g.graph.erase()
                     print("also a fn here to clear all the data regarding said figures.")
 

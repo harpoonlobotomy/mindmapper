@@ -232,12 +232,11 @@ def center_horizontally(bbox_a, bbox_b):
 
 def centre_on_target(subject, target, centre_on_horizontal=True, centre_on_vertical=True, target_is_point=False) -> tuple[float, float, float, float]:
 
-    print(f"Subject arriving to centre_on_target: {subject}")
+    #print(f"Subject arriving to centre_on_target: {subject}")
     def do_centre(a_first, a_second, b_first, b_second) -> tuple[float,float]:
 
         width_line_a = a_second - a_first
         width_line_b = b_second - b_first
-        print(f"width line a: {width_line_a} // width_line_b: {width_line_b}")
 
         midpoint_in_b = b_first + int(width_line_b/2)
 

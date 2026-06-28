@@ -10,5 +10,3 @@ def run():
         break
 
 run()
-
-

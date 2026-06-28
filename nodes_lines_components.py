@@ -11,6 +11,18 @@ import FreeSimpleGUI as sg
 from tkinter import Canvas
 import bbox_manip as bb
 
+def repr_colours(repr_str:str="node", text=""):
+
+    codes = {
+        "node": ["32", "21"],
+        "component": ["35", "26"],
+        "line": ["37", "36"]
+        }
+
+    start = f"\033[{';'.join(codes[repr_str])}m"
+    end = "\033[0m"
+    return f"{start}{text}{end}"
+
 
 SHAPES = {
     "rectangle": {"radius":0},
@@ -23,9 +35,6 @@ COMPONENTS = {
     "text_bg": None
 }
 
-
-def print_s(string:str):
-    pass
 
 class graph_data():
 
@@ -110,8 +119,10 @@ class line:
         self.line_id = uuid4()
         self.figure_id = figure_id
         self.from_node = from_node
+        self.from_xy = None
         self.to_node = to_node
-        self.components:dict[str:component] = deepcopy(COMPONENTS)
+        self.to_xy = None # store the coords here, refer to these when getting self-data. Better than self.coords, just one and done.
+        self.components:set = set()
         self.coords = coords # instead of from_node and to_node being kept separately, can just have the 2-tuple-tuple coords and get what I need as needed. Will think on it.
         self.set_coords(coords)
 
@@ -125,12 +136,18 @@ class line:
             coords = (int(coords[0]), int(coords[1])), (int(coords[2]), int(coords[3]))
 
         self.line_start = coords[0]
+        self.to_xy = coords[0] # these are literal duplicates, but I keep thinking I ned them. So will make them as needed, them combine function later.
         self.line_end = coords[1]
+        self.from_xy = coords[1] # these are literal duplicates
         self.coords = coords
-        print(f"self.line_start: {self.line_start}, self.line_end: {self.line_end}")
 
-    def __repr__(self):
-        return (f"[[LINE_INST line_id: {str(self.line_id)[:-6]}, figure_id: {self.figure_id}, from_node.figure_id: {self.from_node.figure_id if self.from_node else "None"}, to_node.figure_id: {self.to_node.figure_id if self.to_node else "None"}, line_start: {self.line_start}, line_end: {self.line_end}]]")
+    def __repr__(self): # removed `line_id: {str(self.line_id)[:-6]}, `
+        print(f"FROM NODE: {self.from_node}")
+        test = input("Type anything to print a traceback to this point, else hit return")
+        if test:
+            traceback.print_stack()
+        return repr_colours("line", text=f"[[figure_id: {self.figure_id}{f'||from_node.figure_id: {self.from_node.figure_id}' if self.from_node else ""}{f'||to_node.figure_id: {self.to_node.figure_id}' if self.to_node else ""}||line_start: {self.line_start}, line_end: {self.line_end}]]")
+
 
 
 class component:
@@ -144,9 +161,15 @@ class component:
         self.component_type=component_type
         self.text = None # used to store after init, not for init fetching.text is given at each instance's init, not globally.
         print(f"comp init: {self}")
-    def __repr__(self):
-        return (f"[[COMPONENT INST component_type: {self.component_type}{f', text: {self.text}' if hasattr(self, 'text') else ''}]]")#, figure_id: {self.figure_id}, parent: {self.parent}")
 
+    def __repr__(self):
+        return repr_colours("component", f"[[component_type: {self.component_type}{f'||text: {self.text}' if hasattr(self, 'text') else ''}|| figure_id: {self.figure_id}{f'||parent:  {self.parent.figure_id}' if self.parent else ''}]]")
+
+    def set_text_to_top(self):
+        print(f"SElf.component_type in set_text_to_top: {self.component_type}")
+        if self.component_type == "text_label" or self.component_type == "text":
+            print(f"The text type component type varname is: {self.component_type}. Always use this when referencing, make it transparent.")
+            g.graph.bring_figure_to_front(self.figure_id)
 
 class node:
     def __init__(self, figure_id:int, shape:str, bbox=None):
@@ -161,8 +184,8 @@ class node:
         self.connections:set[line] = set()# = {}
         print(f"Node init: {self}")
 
-    def __repr__(self):
-        return (f"[[NODE INST node_id: {str(self.node_id)[:-6]}, figure_id: {self.figure_id}, shape: {self.shape}{f', components: {self.components}' if self.components else ""}{f', connections: {self.connections}' if self.connections else ""}]]")
+    def __repr__(self): # removed `node_id: {str(self.node_id)[:-6]}`
+        return repr_colours("node", f"[[figure_id: {self.figure_id}||shape: {self.shape}{f'||components: {self.components}' if self.components else ""}{f'||connections: {self.connections}' if self.connections else ""}]]")
 
 
 class desk:
@@ -198,14 +221,14 @@ class desk:
             return
 
         if not from_node or not to_node:
-            from_node, to_node = g.find_nodes_for_line() # here I pass it through because sometimes it could be something else.This way the fn doesn't have to find the data itself. I need to get better at that.
+            from_node, to_node = g.find_nodes_for_line()
 
         if to_node:
 
             if line_figure_id in g.temp_figures:
                 g.temp_figures.remove(line_figure_id)
 
-            line_link = self.create_line_inst(line_figure_id, from_node, to_node, coords=g.currently_adding_figure) # this was the problem all along.
+            line_link = self.create_line_inst(line_figure_id, from_node, to_node, coords=g.currently_adding_figure)
             self.update_node_line_data(_line=line_link, new_figure_id=line_figure_id, from_node=from_node, to_node=to_node)
 
             g.selected_figure = to_node if to_node else None
@@ -279,12 +302,14 @@ class desk:
 
         #primary_figure = node_inst if node_inst else line_inst # so I don't have to do it separately depending. Might merge them later, idk.
 
-        if text_figure_id:
-            primary_figure.components.add(component(figure_id = text_figure_id, component_type="text_label", primary_figure=primary_figure))
-        #text_figure_id, text_bg_id = 6,7#"fn here where we make the text figure + bg rectangle, can't be bothered rn"
-    # then once those are created:
         if text_bg_id:
             primary_figure.components.add(component(figure_id=text_bg_id, component_type="text_bg", primary_figure=primary_figure))
+            print(f"\nprimary_figure.components (text_bg): {primary_figure.components}")
+        #text_figure_id, text_bg_id = 6,7#"fn here where we make the text figure + bg rectangle, can't be bothered rn"
+        if text_figure_id:
+            primary_figure.components.add(component(figure_id = text_figure_id, component_type="text_label", primary_figure=primary_figure))
+            print(f"\nprimary_figure.components (text): {primary_figure.components}")
+    # then once those are created:
         return primary_figure.components
 
 
@@ -447,6 +472,8 @@ class desk:
 
             text_instance, text_bg_instance = self.create_component_insts(primary_figure=leader_instance, text_figure_id=text_figure_id, text_bg_id = rect)
 
+            #text_instance.set_text_to_top()
+
             return text_instance, text_bg_instance
 
         new_instance = None
@@ -460,8 +487,10 @@ class desk:
                         self.nodes.remove(i)
                 g.temp_figures = []
 
+        if not g.currently_adding_figure or len(g.currently_adding_figure) == 1:
+            print("No g.currently_adding_figure, returning")
+
         if g.active_tool == "rectangle":
-            print(f"g.currently_adding_figure: {g.currently_adding_figure}")
             line_figure_id = g.graph.draw_rectangle(top_left=g.currently_adding_figure[0], bottom_right=g.currently_adding_figure[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
 
             if temp:
@@ -492,17 +521,14 @@ class desk:
 
                 else:
                     g.last_coords = (g.currently_adding_figure[0], g.currently_adding_figure[1])
-                    self.connect_nodes_with_line(line_figure_id=line_figure_id, to_coords = g.currently_adding_figure[1])
+                    new_instance = self.connect_nodes_with_line(line_figure_id=line_figure_id, to_coords = g.currently_adding_figure[1])
 
 
         if new_instance:# and values["add_text"]:
-            self.create_component_insts(new_instance)
+            #self.create_component_insts(new_instance)
 
             figs = add_text_to_figure_centre(new_instance, g.currently_adding_figure)
 
-            if new_instance.components:
-                for comp in new_instance.components:
-                    g.graph.bring_figure_to_front(comp.figure_id)
             g.selected_figure = new_instance
 
         return []
