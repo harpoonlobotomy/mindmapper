@@ -14,7 +14,7 @@ import bbox_manip as bb
 def repr_colours(repr_str:str="node", text=""):
 
     codes = {
-        "node": ["32", "21"],
+        "node": ["21", "32"],
         "component": ["35", "26"],
         "line": ["37", "36"]
         }
@@ -114,38 +114,37 @@ class line:
 
 
     def __init__(self, figure_id:int, from_node:node=None, to_node:node=None, coords:tuple[tuple[int,int],tuple[int,int]]=None):
-        from copy import deepcopy
         """ Note: Lines can also have components."""
         self.line_id = uuid4()
         self.figure_id = figure_id
         self.from_node = from_node
-        self.from_xy = None
         self.to_node = to_node
-        self.to_xy = None # store the coords here, refer to these when getting self-data. Better than self.coords, just one and done.
         self.components:set = set()
-        self.coords = coords # instead of from_node and to_node being kept separately, can just have the 2-tuple-tuple coords and get what I need as needed. Will think on it.
         self.set_coords(coords)
 
         print(f"line init: {self} / coords: {coords}")
 
     def set_coords(self, coords):
-        print(f"COORDS: {coords}")
+        print(f"COORDS: {coords} len: {len(coords)}")
         if len(coords) == 1:
             coords = coords[0]
+        if len(coords) == 3:
+            if coords[1] == coords[2]:
+                coords = coords[0], coords[1]
         if len(coords) == 4:
-            coords = (int(coords[0]), int(coords[1])), (int(coords[2]), int(coords[3]))
+            coords = list(int(coords[0]), int(coords[1])), (int(coords[2]), int(coords[3]))
 
+        print(f"Coords after fix (should be [(0,0), (0,0)]: {coords}")
         self.line_start = coords[0]
-        self.to_xy = coords[0] # these are literal duplicates, but I keep thinking I ned them. So will make them as needed, them combine function later.
+        self.to_xy = coords[0] # these are literal duplicates, but I keep thinking I need them. So will make them as needed, them combine function later.
         self.line_end = coords[1]
         self.from_xy = coords[1] # these are literal duplicates
         self.coords = coords
 
     def __repr__(self): # removed `line_id: {str(self.line_id)[:-6]}, `
-        print(f"FROM NODE: {self.from_node}")
-        test = input("Type anything to print a traceback to this point, else hit return")
-        if test:
-            traceback.print_stack()
+        #test = input("Type anything to print a traceback to this point, else hit return")
+        #if test:
+        #    traceback.print_stack()
         return repr_colours("line", text=f"[[figure_id: {self.figure_id}{f'||from_node.figure_id: {self.from_node.figure_id}' if self.from_node else ""}{f'||to_node.figure_id: {self.to_node.figure_id}' if self.to_node else ""}||line_start: {self.line_start}, line_end: {self.line_end}]]")
 
 
@@ -211,7 +210,7 @@ class desk:
             if components:
                 return components[0].parent if components[0].parent else components[0]
             else:
-                return list(i.from_node for i in self.lines if i.figure_id == figure_id)
+                return list(i.from_node for i in self.lines if i.figure_id == figure_id)[0]
 
     def connect_nodes_with_line(self, line_figure_id:int, from_node=None, to_node=None, to_coords=None): # use a version of this again with the update. Make them work together better. Same goal.
 
@@ -242,14 +241,14 @@ class desk:
         assert isinstance(_line, line)
         """ This is where the figure_id is changed, and where connections are updated, etc. Nothing about the node instances should change outside of this fn."""
         ## to update:
-        print(f"node:{node} / line: {line} / new_figure_id: {new_figure_id} in update_node_line_data.\n Here we make sure the coordinate/start/end are up to date, and that both nodes have updated the connection. This runs per node, during the connection check.")
+        print(f"[update_node_line_date] {_line} / new_figure_id: {new_figure_id}")
 
         old_id = _line.figure_id
         _line.figure_id = new_figure_id
         _line.line_start
 
-        assert _line.from_node == from_node
-        assert _line.to_node == to_node
+        assert _line.from_node == from_node and isinstance(from_node, node)
+        assert _line.to_node == to_node  and isinstance(to_node, node)
         def remove_previous_connection(from_node:node, to_node:node, new_figure_id):
 
             for node in (from_node, to_node):
@@ -272,7 +271,8 @@ class desk:
             """
         if not _line.from_node and _line.to_node:
             print("Line does not have to_node and from_node; fatal error, no idea how this happened.")
-            traceback.print_tb()
+            #traceback.print_stack()
+            traceback.print_last()
 
         _line.to_node.connections.add(_line)#] = ({"from_node":from_node}) # should already be in it.
         _line.from_node.connections.add(_line)#] = ({"to_node":to_node})
@@ -288,6 +288,15 @@ class desk:
 
     def create_line_inst(self, figure_id:int, from_node:node=None, to_node:node=None, coords:tuple[tuple[int,int],tuple[int,int]]=None):
         """ Just the line version of create_node_inst. Not sure if I should merge them or not. Keeping like this for now."""
+
+        if not isinstance(from_node,node):
+
+            print(f"No from_node: `{from_node}`")
+            traceback.print_stack()
+        if not isinstance(to_node,node):
+            print(f"No to_node: `{to_node}`")
+        assert isinstance(from_node, node) if from_node else True
+        assert isinstance(to_node, node) if to_node else True
         line_inst = line(figure_id, from_node, to_node, coords)
         print(f"ADDING {self} TO LINES NOW.")
         self.lines.add(line_inst)
@@ -489,7 +498,7 @@ class desk:
 
         if not g.currently_adding_figure or len(g.currently_adding_figure) == 1:
             print("No g.currently_adding_figure, returning")
-
+            return
         if g.active_tool == "rectangle":
             line_figure_id = g.graph.draw_rectangle(top_left=g.currently_adding_figure[0], bottom_right=g.currently_adding_figure[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
 
