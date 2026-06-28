@@ -8,7 +8,6 @@ Man I really want a socket class but that's dumb."""
 import traceback
 from uuid import uuid4
 import FreeSimpleGUI as sg
-from tkinter import Canvas
 import bbox_manip as bb
 
 def repr_colours(repr_str:str="node", text=""):
@@ -41,7 +40,8 @@ class graph_data():
     def __init__(self):
 
         self.graph:sg.Graph = None
-        self.canvas:Canvas = None
+        self.canvas:sg.Canvas = None
+        self.add_text:sg.Input = None
 
         self.temp_figures:list[int] = []
 
@@ -61,6 +61,8 @@ class graph_data():
 
         self.last_coords:tuple[tuple[int,int], tuple[int,int]] = ((0,0), (0,0))
         self.last_line:int = None # figure_id for the last line drawn. Can't use instances here as they only exist after mouseup. This has to include temps else it'll always fail.
+        self.current_text = ""
+        self.changing_text:bool = False
 
     def clear_all(self):
         self.pointer_index = {}
@@ -151,14 +153,15 @@ class line:
 
 class component:
 
-    def __init__(self, figure_id:int, component_type:str, primary_figure:node|line):#, text:str=None):
+    def __init__(self, figure_id:int, component_type:str, primary_figure:node|line, text:str=None):#, text:str=None):
         assert component_type in COMPONENTS
         assert isinstance(primary_figure, node|line)
 
         self.figure_id:int = figure_id
         self.parent:node|line = primary_figure
         self.component_type=component_type
-        self.text = None # used to store after init, not for init fetching.text is given at each instance's init, not globally.
+        if self.component_type == "text_label":
+            self.text = text if text else None # used to store after init, not for init fetching.text is given at each instance's init, not globally.
         print(f"comp init: {self}")
 
     def __repr__(self):
@@ -210,7 +213,9 @@ class desk:
             if components:
                 return components[0].parent if components[0].parent else components[0]
             else:
-                return list(i.from_node for i in self.lines if i.figure_id == figure_id)[0]
+                lines = list(i.from_node for i in self.lines if i.figure_id == figure_id)
+                if lines:
+                    return list(i.from_node for i in self.lines if i.figure_id == figure_id)[0]
 
     def connect_nodes_with_line(self, line_figure_id:int, from_node=None, to_node=None, to_coords=None): # use a version of this again with the update. Make them work together better. Same goal.
 
@@ -305,19 +310,20 @@ class desk:
         return line_inst
 
 
-    def create_component_insts(self, primary_figure:node|line, text_figure_id:int=None, text_bg_id:int=None):#node_inst:node=None, line_inst:line=None):
+    def create_component_insts(self, primary_figure:node|line, text_figure_id:int=None, text_bg_id:int=None, text:str=None):
         """ Can be used on its own to add components"""
-        #assert isinstance(node_inst, node) if node_inst else isinstance(line_inst, line)
+        if not text:
+            return primary_figure.components
+
+        print(f"PRIMARY FIGURE: {primary_figure}")
+        assert isinstance(primary_figure, node|line)# else isinstance(primary_figure, line)
 
         #primary_figure = node_inst if node_inst else line_inst # so I don't have to do it separately depending. Might merge them later, idk.
 
-        if text_bg_id:
-            primary_figure.components.add(component(figure_id=text_bg_id, component_type="text_bg", primary_figure=primary_figure))
-            print(f"\nprimary_figure.components (text_bg): {primary_figure.components}")
+        primary_figure.components.add(component(figure_id=text_bg_id, component_type="text_bg", primary_figure=primary_figure, text=text))
         #text_figure_id, text_bg_id = 6,7#"fn here where we make the text figure + bg rectangle, can't be bothered rn"
-        if text_figure_id:
-            primary_figure.components.add(component(figure_id = text_figure_id, component_type="text_label", primary_figure=primary_figure))
-            print(f"\nprimary_figure.components (text): {primary_figure.components}")
+        primary_figure.components.add(component(figure_id = text_figure_id, component_type="text_label", primary_figure=primary_figure))
+        print(f"\nprimary_figure.components (text): {primary_figure.components}")
     # then once those are created:
         return primary_figure.components
 
@@ -479,7 +485,7 @@ class desk:
             g.graph.bring_figure_to_front(rect)
             g.graph.bring_figure_to_front(text_figure_id)
 
-            text_instance, text_bg_instance = self.create_component_insts(primary_figure=leader_instance, text_figure_id=text_figure_id, text_bg_id = rect)
+            text_instance, text_bg_instance = self.create_component_insts(primary_figure=leader_instance, text_figure_id=text_figure_id, text_bg_id = rect, text=values.get("add_text"))
 
             #text_instance.set_text_to_top()
 
@@ -533,10 +539,10 @@ class desk:
                     new_instance = self.connect_nodes_with_line(line_figure_id=line_figure_id, to_coords = g.currently_adding_figure[1])
 
 
-        if new_instance:# and values["add_text"]:
+        if new_instance and g.current_text:
             #self.create_component_insts(new_instance)
 
-            figs = add_text_to_figure_centre(new_instance, g.currently_adding_figure)
+            add_text_to_figure_centre(new_instance, g.currently_adding_figure)
 
             g.selected_figure = new_instance
 

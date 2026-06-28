@@ -16,6 +16,7 @@ def start_window():
             self.testing = True
 
             self.values = {}
+            self.first_run = False
 
             self.window_size:tuple[int,int] = (1600,1920)
             self.graph_dimensions =  self.window_size[0]*.8, self.window_size[1]*.8
@@ -175,8 +176,8 @@ def start_window():
                 [rectangle_buttons],
                 [circle_buttons],
                 [line_buttons],
-
-            ])], [sg.Column(layout=[[sg.Column(layout=[[sg.InputText(default_text=str(w.ratio[0]), size=(2,1), key="ratio_part_1", enable_events=True), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(w.ratio[1]), size=(2,1), key="ratio_part_2", enable_events=True)]], visible=False, key="set_ratio_column", pad=0)]])], [sg.Text("Element text:")],[sg.InputText(default_text="testing", key="add_text")]] # TODO change "testing" to '' to default to None
+                    ]),                ],
+                [sg.Column(layout=[[sg.Column(layout=[[sg.InputText(default_text=str(w.ratio[0]), size=(2,1), key="ratio_part_1", enable_events=True), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(w.ratio[1]), size=(2,1), key="ratio_part_2", enable_events=True)]], visible=False, key="set_ratio_column", pad=0)]])], [sg.Text("Element text:")],[sg.InputText(default_text="testing", key="add_text", enable_events=True)]] # TODO change "testing" to '' to default to None
 
 
         header_buttons = [
@@ -229,8 +230,8 @@ def start_window():
             select_tool(g.active_tool)
             g.graph = window["graph"] ## type: sg.Graph
             g.canvas = window["graph"].Widget
-            print(f"Selected tool: {g.active_tool}")
-            print(f"g.graph: {g.graph}")
+            g.add_text = window["add_text"].Widget
+            g.current_text = g.add_text.get()
 
 
         setup_window()
@@ -239,10 +240,38 @@ def start_window():
         while True and not window.is_closed():
             event, values = window.read(3000)
             w.values = values
+            if event == "add_text" and not g.changing_text: # oh now I get the thing with issue tracking. I can follow which edit changed what without having to make notes. Ohh...
+                print("user has clicked on add_text, start monitoring for changes.")
+                 # type: sg.Input
+
+
+                print(f'newtext.Get: {g.add_text.get()}')
+                g.current_text=g.add_text.get()# set this to whatever the current value is to make sure it's up to date after any interaction.
+                g.changing_text=True
+                print(f"Set g.current_text to {g.current_text}")
+                continue
+
+                #if window._focus_callback(event):# and window._focus_callback(event).event == "add_text":
             if event and event != "__TIMEOUT__":
+
+                if g.changing_text and event != "add_text":
+                    print(f"CHANGING_TEXT IS TRUTHY: {g.changing_text}")
+                    if len(event) != 1:
+                        g.current_text = g.add_text.get()
+                        g.changing_text = False
+                        print(f"updated g.current_text to: {g.current_text}")
+
+    # Now we go back to doing anything else.
+
+                if w.first_run:
+                    g.current_text = values["add_text"]
 
                 if (isinstance(event, str) and event.startswith("Escape")) or window.is_closed():
                     break
+
+                if event == "add_text" and event != g.current_text:
+                    print(f"event == add_text so going to update g.current_text to values[add_text], which is currently: {values["add_text"]}")
+                    g.current_text = values["add_text"]
 
                 if event == "new":
                     print("event new")
