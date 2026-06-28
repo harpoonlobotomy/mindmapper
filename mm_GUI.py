@@ -44,6 +44,28 @@ def start_window():
         def select(self, no_jiggle=False):
             _nodes.select(selection_area=g.graph.ClickPosition, no_jiggle=no_jiggle)
 
+        def delete(self):
+            inst_to_delete:set = set()
+            inst_to_delete.add(g.selected_figure)
+            if g.selected_figure.components:
+                for comp in g.selected_figure.components:
+                    inst_to_delete.add(comp)
+                    # not _nodes.update_node_line_data() but
+                    comp.parent = None
+            if g.selected_figure.components:
+                for connection in g.selected_figure.connections:
+                    inst_to_delete.add(connection)
+                    relevant = (i for i in connection.to_node.connections if i.to_node == inst_to_delete or i.from_node == inst_to_delete)
+                    if relevant:
+                        for link_inst in relevant:
+                            inst_to_delete.union(link_inst.components)
+
+            for item in inst_to_delete:
+                g.graph.delete_figure(item.figure_id)
+            print(f"Deleted items asociated with {g.selected_figure}")
+
+
+
         def get_graph_dimensions(self):
 
             def get_window_size():
@@ -314,6 +336,9 @@ def start_window():
                 elif event in ("polygon", "single_line"):
                     g.line_type = event
 
+                elif event == "delete" and g.selected_figure:
+                    print(f"Deleting {g.selected_figure} and components.")
+                    w.delete()
                     """
                 elif event.startswith("set_ratio"):
                     w.show_ratio = not w.show_ratio

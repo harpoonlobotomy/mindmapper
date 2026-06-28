@@ -211,10 +211,12 @@ class desk:
         if nodes:
             return nodes[0]
         else:
+            print("Have just realised self.components isn't added to? Is that true? If so how can this possibly return anything?")
             components = list(i for i in self.components if i.figure_id == figure_id)
             if components:
                 return components[0].parent if components[0].parent else components[0]
             else:
+                print("It didn't return anything.")
                 lines = list(i.from_node for i in self.lines if i.figure_id == figure_id)
                 if lines:
                     return list(i.from_node for i in self.lines if i.figure_id == figure_id)[0]
@@ -243,6 +245,18 @@ class desk:
 
             return line_link
 
+
+    def move_components(self, luggage:list[component], centred:tuple[tuple[int,int], tuple[int,int]], target_loc=None):
+        """ Not in use yet, got distracted."""
+        for fig in luggage:
+            if target_loc:
+                centred = bb.centre_on_target(subject=g.canvas.bbox(fig.figure_id), target=target_loc, target_is_point=True)
+            if fig.component_type == "text_label":
+
+                width, height = bb.bbox_width_and_height(centred)
+                centred = centred[0]+(width/2)-2, centred[1]+height/2-2, centred[2]+(width/2)-2, centred[3]+(height/2)-2
+
+            g.graph.relocate_figure(fig.figure_id, centred[0], centred[1])
 
     def update_node_line_data(self, _line:line=None, new_figure_id:int=None, from_node:node=None, to_node:node=None):
         assert isinstance(_line, line)
@@ -537,8 +551,8 @@ class desk:
                     print("Ignore polygons for now.")
 
                 else:
-                    g.last_coords = (g.currently_adding_figure[0], g.currently_adding_figure[1])
-                    new_instance = self.connect_nodes_with_line(line_figure_id=line_figure_id, to_coords = g.currently_adding_figure[1])
+                    g.last_coords = (g.currently_adding_figure[0], g.graph.ClickPosition)
+                    new_instance = self.connect_nodes_with_line(line_figure_id=line_figure_id, to_coords = g.graph.ClickPosition)
 
 
         if new_instance and g.current_text:
