@@ -399,7 +399,8 @@ class desk:
         sleep(sleeptime)
 
 
-    def move(self, target_loc, exclude_text=False):
+    def move(self, target_loc, is_temp=False):
+
 
         def draw_newline(existing_line_instance:line, line_start, line_end) -> int:
             line_start = (int(line_start[0]), int(line_start[1]))
@@ -420,6 +421,11 @@ class desk:
         if not primary_object.figure_id:
             print(f"primary object still selected after deletion: {primary_object}")
             g.selected_figure = None
+            return
+
+        local_figures = g.graph.get_figures_at_location(g.graph.ClickPosition)
+        if not local_figures or not primary_object.figure_id in local_figures:
+            print("selected figure not where clicked, returning.")
             return
 
         assert isinstance(primary_object, node)

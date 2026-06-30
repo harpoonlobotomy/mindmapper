@@ -33,7 +33,7 @@ def start_window():
             if not g.selected_figure:
                 #TODO: get figure at xy if any and set selected.
                 return
-            _nodes.move(target_loc=w.values["graph"], exclude_text=temp)
+            _nodes.move(target_loc=w.values["graph"], is_temp=temp)
 
 
         def draw(self, temp=False, custom_coordinates=None):
@@ -117,6 +117,23 @@ def start_window():
 
 
     def make_window():
+
+        def do_doubleclick():
+            """ What do I need to do here.
+            1) check if there are any valid figures or components at location.
+                1a) figure out the best way to check those components. Right now I don't even keep a list/set of all the components to scan through, I have to scan through all the nodes and then test their components.
+             If 'no', nothing happens, return.
+            2) If yes, if none of those underfoot is already selected, select the top one. Prioritise components above figures here, if I'm clicking the name panel then that is the one I want.
+            3) Once a single figure/figure-family is selected, we bring up the edit text popup input box (default text == node's current label), apply the edit on enter/ok, revert to the existing on cancel/esc.
+            4) Ensure the text component is updated, not just the graph text string.
+            """
+            figures = g.graph.get_figures_at_location(g.graph.ClickPosition)
+            if figures and len(figures) == 1:
+                chosen = figures[0]
+                print(f"Chosen: {chosen}")
+            elif figures:
+                components = list(i for i in figures if isinstance(i, nodes.component))
+                print(f"Components: {components}")
 
         def end_current_drawing():
             """ Just exists to clear the current drawing in the case of polygons etc. Later can decide if a polygon should keep drawing even if you've clicked off."""
@@ -296,11 +313,23 @@ def start_window():
             from consts import ADD_SHAPE_MENU
             g.graph.set_right_click_menu(menu=ADD_SHAPE_MENU)
 
+            window.bind('<Double-Button-1>', "doubleclicked")
+
         setup_window()
         g.currently_adding_figure = []
 
+
         while True and not window.is_closed():
             event, values = window.read(3000)
+
+            if event == "doubleclicked":
+                do_doubleclick()
+
+
+            """
+            window.bind('<Double-Button-1>', 'doubleclicked')
+
+            """
             w.values = values
             """if event == "add_text" and not g.changing_text:
                 g.current_text=g.add_text.get()
