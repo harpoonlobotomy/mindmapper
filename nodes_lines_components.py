@@ -9,7 +9,6 @@ import traceback
 from uuid import uuid4
 import FreeSimpleGUI as sg
 import bbox_manip as bb
-from consts import ADD_SHAPE_MENU
 
 def repr_colours(repr_str:str="node", text=""):
 
@@ -208,12 +207,14 @@ class desk:
 
         self.temp_figures:list[str] = [] # figure_ids for temp items.
 
+    #def delete_components
+
     def get_node_by_figure_id(self, figure_id):
 
         nodes = list(i for i in self.nodes if i.figure_id == figure_id)
         if nodes:
             return nodes[0]
-        else:
+        """else:
             print("Have just realised self.components isn't added to? Is that true? If so how can this possibly return anything?")
             components = list(i for i in self.components if i.figure_id == figure_id)
             if components:
@@ -222,9 +223,14 @@ class desk:
                 print("It didn't return anything.")
                 lines = list(i.from_node for i in self.lines if i.figure_id == figure_id)
                 if lines:
-                    return list(i.from_node for i in self.lines if i.figure_id == figure_id)[0]
+                    return list(i.from_node for i in self.lines if i.figure_id == figure_id)[0]"""
 
     def connect_nodes_with_line(self, line_figure_id:int, from_node=None, to_node=None, to_coords=None): # use a version of this again with the update. Make them work together better. Same goal.
+
+        def remove_improper_connection(line_figure_id):
+            if line_figure_id in g.temp_figures:
+                g.temp_figures.remove(line_figure_id)
+            g.graph.delete_figure(line_figure_id)
 
         to_coord = g.currently_adding_figure[-1] if g.currently_adding_figure else None
         if not to_coord:
@@ -234,19 +240,32 @@ class desk:
         if not from_node or not to_node:
             from_node, to_node = g.find_nodes_for_line()
 
-        if to_node:
 
-            if line_figure_id in g.temp_figures:
-                g.temp_figures.remove(line_figure_id)
+        if not from_node or not to_node:
+            print(f"No from_node, deleting line {line_figure_id}")
+            remove_improper_connection(line_figure_id)
+            #g.last_coords = None#(g.currently_adding_figure[0], g.graph.ClickPosition)
+            return None
 
-            line_link = self.create_line_inst(line_figure_id, from_node, to_node, coords=g.currently_adding_figure)
-            self.update_node_line_data(_line=line_link, new_figure_id=line_figure_id, from_node=from_node, to_node=to_node)
+        if from_node.connections:
+            for conn in from_node.connections:
+                if conn.to_node == to_node and conn.from_node == from_node or conn.from_node == to_node and conn.to_node == from_node:
+                    print("Nodes already have a connection, cancelling.")
+                    remove_improper_connection(line_figure_id)
+                    #g.last_coords = None
+                    return None
 
-            g.selected_figure = to_node if to_node else None
-            assert isinstance(g.selected_figure, node) if g.selected_figure else True#g.selected_figure
-            g.graph.send_figure_to_back(line_figure_id)
+        if line_figure_id in g.temp_figures:
+            g.temp_figures.remove(line_figure_id)
 
-            return line_link
+        line_link = self.create_line_inst(line_figure_id, from_node, to_node, coords=g.currently_adding_figure)
+        self.update_node_line_data(_line=line_link, new_figure_id=line_figure_id, from_node=from_node, to_node=to_node)
+
+        g.selected_figure = to_node if to_node else None
+        assert isinstance(g.selected_figure, node) if g.selected_figure else True#g.selected_figure
+        g.graph.send_figure_to_back(line_figure_id)
+
+        return line_link
 
 
     def move_components(self, luggage:list[component], centred:tuple[tuple[int,int], tuple[int,int]], target_loc=None):
@@ -489,9 +508,11 @@ class desk:
 
             return text_instance, text_bg_instance
 
+        print("def draw")
         new_instance = None
 
         if g.temp_figures:
+            print("deleting temp figures")
             for figure_id in g.temp_figures:
                 g.graph.delete_figure(figure_id)
                 instances = list(i for i in self.nodes if i.figure_id == figure_id)
@@ -531,6 +552,7 @@ class desk:
             if temp:
                 g.temp_figures.append(line_figure_id)
             else:
+                print("LINE IS NOT TEMP")
                 if g.line_type == "polygon": # note: this way of doing polygons doesn't work because you can't move them, selecting selects a specific line, not the full polygon obj.
                     print("Ignore polygons for now.")
 
@@ -567,6 +589,7 @@ class desk:
                     g.current_text = new_text
                     break
                 if event.startswith("Escape") or event == "popup_text_cancelled":
+                    g.current_text = ""
                     break
 
             popup_window.close()
@@ -584,17 +607,20 @@ class desk:
 
         figures = g.graph.get_figures_at_location(selection_area) # this needs to be 'closest to mouse click' will work on it later.
         if not figures:
-
-            print("No figures at location.")
-        # Desired behaviour: left click on nothing = add new shape menu (that would usually be a rickt click menu)
-            g.graph.set_right_click_menu(menu=ADD_SHAPE_MENU) #set the 'add new shape' menu as right click menu, then do a right click
             return
         figure = figures[0]
 
         primary_object = self.get_node_by_figure_id(figure)#dd.get_node_by_figure_id(figure_id=figure)
         if not primary_object:
-            print("No selection found, returning.")
-            return
+            for nodule in (j for j in self.nodes if j.components):
+                matching_comp = list(i for i in nodule.components if nodule.components and i.figure_id == figure)
+                if matching_comp and matching_comp[0].parent:
+                    primary_object = matching_comp[0].parent
+                    print(f"Matching comp has a parent: {matching_comp} // {matching_comp[0].parent}")
+                    break
+            else:
+                print("No selection found, returning.")
+                return
 
         g.selected_figure = primary_object
 

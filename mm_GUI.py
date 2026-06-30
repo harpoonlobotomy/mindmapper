@@ -109,6 +109,13 @@ def start_window():
             self.graph_bottom_left = (left, bottom)
             self.graph_top_right = (right, top)
 
+        def update_colour(event, values):
+            if event == "stroke_colour":
+                g.line_colour = values[event]
+            elif event == "fill_colour":
+                g.fill_colour = values[event]
+
+
     def make_window():
 
         def end_current_drawing():
@@ -251,7 +258,7 @@ def start_window():
             [simple_button("copy"), simple_button("paste"), simple_button("duplicate"), simple_button("delete")]
             ]
         colour_panel = [
-            [sg.ColorChooserButton(button_text="Stroke Colour"), sg.ColorChooserButton(button_text="Fill Colour")],
+            [sg.ColorChooserButton(button_text="Stroke Colour", key="stroke_colour"), sg.ColorChooserButton(button_text="Fill Colour", key="fill_colour")],
             [sg.Button(button_text="Update selected", key="update_selected_to_curr_colours")]
         ]
         button_panel = sg.Column(layout=[
@@ -286,6 +293,8 @@ def start_window():
             #g.add_text = window["popup_text_input"].Widget
             g.current_text = ""#g.add_text.get()
 
+            from consts import ADD_SHAPE_MENU
+            g.graph.set_right_click_menu(menu=ADD_SHAPE_MENU)
 
         setup_window()
         g.currently_adding_figure = []
@@ -358,6 +367,10 @@ def start_window():
                     select_tool(event)
                     pass
 
+
+                elif event in ("stroke_colour", "fill_colour"):
+                    print(f"COlour changed: {event}")
+                    w.update_colour(event, values)
                     """
                 elif event.startswith("set_ratio"):
                     w.show_ratio = not w.show_ratio
