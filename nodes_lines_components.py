@@ -9,6 +9,7 @@ import traceback
 from uuid import uuid4
 import FreeSimpleGUI as sg
 import bbox_manip as bb
+from consts import ADD_SHAPE_MENU
 
 def repr_colours(repr_str:str="node", text=""):
 
@@ -60,11 +61,13 @@ class graph_data():
         self.active_tool:str = "rectangle"
 
         self.last_coords:tuple[tuple[int,int], tuple[int,int]] = ((0,0), (0,0))
-        self.last_line:int = None # figure_id for the last line drawn. Can't use instances here as they only exist after mouseup. This has to include temps else it'll always fail.
+
         self.current_text = ""
         self.changing_text:bool = False
         self.start_coords:tuple[int,int] = None
         self.end_coords:tuple[int,int] = None # not for any particular figure/instance, just the last click-and-drag/click event start/end.
+
+        self.add_labels_to_lines:bool = False
 
     def clear_all(self):
         self.pointer_index = {}
@@ -177,15 +180,15 @@ class component:
 
 class node:
     def __init__(self, figure_id:int, shape:str, bbox=None):
+        print(f"Shape in node init: {shape}")
         assert shape in SHAPES
 
-        self.node_id = uuid4()
         self.figure_id:int = figure_id
         self.shape:str = shape
         if bbox:
-            self.centrepoint = bb.get_half_dimensions(bbox) # for later.
-        self.components:set[component] = set()#dict[str:component] = deepcopy(COMPONENTS)
-        self.connections:set[line] = set()# = {}
+            self.centrepoint = bb.get_half_dimensions(bbox)
+        self.components:set[component] = set()
+        self.connections:set[line] = set()
         print(f"Node init: {self}")
 
     def __repr__(self): # removed `node_id: {str(self.node_id)[:-6]}`
@@ -395,16 +398,20 @@ class desk:
             return
 
         primary_object = g.selected_figure
+        if not primary_object.figure_id:
+            print(f"primary object still selected after deletion: {primary_object}")
+            g.selected_figure = None
+            return
+
         assert isinstance(primary_object, node)
         luggage = primary_object.components
 
         centred = bb.centre_on_target(subject=g.canvas.bbox(primary_object.figure_id), target=target_loc, target_is_point=True)
 
-        if not luggage:# or exclude_text:
+        if not luggage:# or exclude_text: # turn this off to make the movement happen only when releasing mousebutton.
             g.graph.relocate_figure(primary_object.figure_id, centred[0], centred[1])
             return
 
-# First move the main object
         g.graph.relocate_figure(primary_object.figure_id, centred[0], centred[1])
 
         for fig in luggage:
@@ -417,34 +424,24 @@ class desk:
             g.graph.relocate_figure(fig.figure_id, centred[0], centred[1])
 
         if primary_object.connections:
-            print("PRIMARY_OBJECT.CONNECTIONS")
 
             for line_inst in list(primary_object.connections):
                 line_end = line_start = None
-                print(f"primary object: {primary_object}")
                 if primary_object == line_inst.to_node :
                     line_start = line_inst.line_start
                     line_end = target_loc
                     line_inst.line_end = target_loc
 
-                    print(f"moving the line's to_node: {primary_object}")
 
                 if primary_object == line_inst.from_node:
-                    #line_start = target_loc
-                    #line_end = line_inst.line_start
                     line_start = target_loc
                     line_end = line_inst.line_end
                     line_inst.line_start = target_loc
 
-                    print(f"moving the line's from_node: {primary_object} / line_start = target_loc / line_emd = line_inst.line_end")
-
-
                 line_end = (int(line_end[0]), int(line_end[1]))
-                #new_line = draw_newline(line_inst, line_start=target_loc, line_end=line_inst.line_end)
                 new_line = draw_newline(line_inst, line_start=line_start, line_end=line_end)
 
                 if new_line:
-
                     if g.canvas.find_withtag(line_inst.figure_id):
                         g.graph.delete_figure(line_inst.figure_id)
 
@@ -453,8 +450,8 @@ class desk:
                     line_inst.line_end = line_end
                     if line_inst.figure_id in g.temp_figures:
                         g.temp_figures.remove(line_inst.figure_id)
-                    print("line_inst is updated, returning now.")
 
+                    g.graph.send_figure_to_back(line_inst.figure_id)
 
                 else:
                     print("No newline created for coords ")
@@ -468,48 +465,33 @@ class desk:
     def draw(self, coordinates:list, values=None, temp=False): #
         """ REMEMBER: We do have to keep sending coordinates here, because it might be custom coords. Instead, send it to here, and immediately give it to g. and use that henceforth. Easiest."""
 
-        """     coords = g.currently_adding_figure # don't need to pass it around, can access it anywher.        """
-
         g.currently_adding_figure = coordinates
-
 
         def add_text_to_figure_centre(leader_instance, current_coords) -> tuple[component, component]:
 
-            text_figure_id = g.graph.draw_text(text=values["add_text"], location=(current_coords[-1]))
+            text_figure_id = g.graph.draw_text(text=g.current_text, location=(current_coords[-1]))
             new_text_bbox = bb.centre_on_target(subject=g.canvas.bbox(text_figure_id), target=g.canvas.bbox(leader_instance.figure_id))
             half_text_w = (new_text_bbox[2] - new_text_bbox[0])/2
             half_text_h = (new_text_bbox[3] - new_text_bbox[1])/2
 
             g.graph.relocate_figure(text_figure_id, new_text_bbox[0] + half_text_w, new_text_bbox[1] + half_text_h)
-            #text_instance = add_figure(text_figure_id, type="text", parent=leader_instance)
-
-            #text_instance.type="text"
-
-            #g.canvas.itemconfig(text, {"tags": [["text"], [leader_instance.pointer]]})
 
             top_left = g.canvas.bbox(text_figure_id)[0]-5, g.canvas.bbox(text_figure_id)[1]-5
             bottom_right = g.canvas.bbox(text_figure_id)[2]+5, g.canvas.bbox(text_figure_id)[3]+5
 
             centred_rectangle = bb.centre_on_target(subject=(top_left, bottom_right), target=g.canvas.bbox(leader_instance.figure_id))
             rect = g.graph.draw_rectangle(top_left=(centred_rectangle[0], centred_rectangle[1]), bottom_right=(centred_rectangle[2], centred_rectangle[3]), fill_color="white", line_color=g.lighter_line_colour)
-            #text_bg_instance = add_figure(rect, "rectangle_sml", parent=leader_instance)
-            #text_bg_instance.parent=leader_instance.pointer
-            #text_bg_instance.type="rectangle_sml"
-            #g.canvas.itemconfig(rect, {"tags": [["sml_rect"], [leader_instance.pointer]]})
-            #leader_instance.text_bg_child = text_bg_instance.pointer
-            #leader_instance.children.append(text_bg_instance.pointer)
+
             g.graph.bring_figure_to_front(rect)
             g.graph.bring_figure_to_front(text_figure_id)
 
-            text_instance, text_bg_instance = self.create_component_insts(primary_figure=leader_instance, text_figure_id=text_figure_id, text_bg_id = rect, text=values.get("add_text"))
-
-            #text_instance.set_text_to_top()
+            text_instance, text_bg_instance = self.create_component_insts(primary_figure=leader_instance, text_figure_id=text_figure_id, text_bg_id = rect, text=g.current_text)
 
             return text_instance, text_bg_instance
 
         new_instance = None
 
-        if g.temp_figures: # without this, every temp line remains in place.
+        if g.temp_figures:
             for figure_id in g.temp_figures:
                 g.graph.delete_figure(figure_id)
                 instances = list(i for i in self.nodes if i.figure_id == figure_id)
@@ -521,6 +503,7 @@ class desk:
         if not g.currently_adding_figure or len(g.currently_adding_figure) == 1:
             print("No g.currently_adding_figure, returning")
             return
+
         if g.active_tool == "rectangle":
             line_figure_id = g.graph.draw_rectangle(top_left=g.currently_adding_figure[0], bottom_right=g.currently_adding_figure[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
 
@@ -530,8 +513,9 @@ class desk:
                 new_instance = self.create_node_inst(line_figure_id, shape="rectangle")
 
         elif g.active_tool == "circle":
-            import math
-            d = math.sqrt((g.currently_adding_figure[1][0] - g.currently_adding_figure[0][0])**2 + (g.currently_adding_figure[1][1] - g.currently_adding_figure[0][1])**2)
+            # if g.apply_ratio:
+            #   import math
+            #   d = math.sqrt((g.currently_adding_figure[1][0] - g.currently_adding_figure[0][0])**2 + (g.currently_adding_figure[1][1] - g.currently_adding_figure[0][1])**2)
 
             line_figure_id = g.graph.draw_oval(top_left=g.currently_adding_figure[0], bottom_right=g.currently_adding_figure[1], fill_color=g.fill_colour, line_color=g.line_colour, line_width=g.line_width)
 
@@ -554,12 +538,44 @@ class desk:
                     g.last_coords = (g.currently_adding_figure[0], g.graph.ClickPosition)
                     new_instance = self.connect_nodes_with_line(line_figure_id=line_figure_id, to_coords = g.graph.ClickPosition)
 
+        if isinstance(new_instance, line) and not g.add_labels_to_lines:
+            return []
 
-        if new_instance and g.current_text:
-            #self.create_component_insts(new_instance)
+    ## Here we do the popup to see what text to add
+        def get_text_from_popup():
+            g.graph.ClickPosition # near to here is where the popup should be.
+            popup_bg_col = "#D6D4D0"
+            popup_text_col = "#24211D"
 
-            add_text_to_figure_centre(new_instance, g.currently_adding_figure)
+            top,right = g.graph.TopRight
+            bottom, left = g.graph.BottomLeft
 
+            adjusted_pos = g.graph.ClickPosition[0] + left + 200, g.graph.ClickPosition[1] + top + 100
+
+            popup_window = sg.Window(title="", layout=[
+                [sg.Input(default_text="", text_color=popup_text_col, key="popup_text_input", enable_events=True, focus=True)],
+                [sg.Ok(button_text="Done", key="popup_text_done"), sg.Cancel(key="popup_text_cancelled")]
+                ], location = adjusted_pos, background_color=popup_bg_col, button_color=popup_bg_col, no_titlebar=True, keep_on_top=True, element_justification="center", finalize=True
+            )
+            popup_window["popup_text_input"].set_focus(True)
+            while True:
+                event, value = popup_window.read(500)
+                if popup_window.is_closed():
+                    break
+                if event == "popup_text_done":
+                    new_text = value["popup_text_input"]
+                    g.current_text = new_text
+                    break
+                if event.startswith("Escape") or event == "popup_text_cancelled":
+                    break
+
+            popup_window.close()
+            #print(f"After popup is closed:\nevent: {event}, value: {value}")
+
+        if new_instance:# and g.current_text:
+            get_text_from_popup()
+            if g.current_text:
+                add_text_to_figure_centre(new_instance, g.currently_adding_figure)
             g.selected_figure = new_instance
 
         return []
@@ -568,16 +584,20 @@ class desk:
 
         figures = g.graph.get_figures_at_location(selection_area) # this needs to be 'closest to mouse click' will work on it later.
         if not figures:
+
             print("No figures at location.")
+        # Desired behaviour: left click on nothing = add new shape menu (that would usually be a rickt click menu)
+            g.graph.set_right_click_menu(menu=ADD_SHAPE_MENU) #set the 'add new shape' menu as right click menu, then do a right click
             return
         figure = figures[0]
+
         primary_object = self.get_node_by_figure_id(figure)#dd.get_node_by_figure_id(figure_id=figure)
         if not primary_object:
             print("No selection found, returning.")
             return
 
         g.selected_figure = primary_object
-        print(f"selected: {g.selected_figure.figure_id}")
+
         if no_jiggle:
             return
         """

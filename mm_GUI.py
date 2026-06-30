@@ -1,7 +1,8 @@
-"""Minimim viable product GUI"""
 
 import FreeSimpleGUI as sg
 import nodes_lines_components as nodes
+from debug import debug
+db = debug()
 
 _nodes = nodes.desk_drawer
 
@@ -41,7 +42,7 @@ def start_window():
 
             return [] # to clear g.currently_drawing.
 
-        def select(self, no_jiggle=False):
+        def select(self, no_jiggle=False): # Any reason to keep this here and not just direct to _nodes.select directly?
             _nodes.select(selection_area=g.graph.ClickPosition, no_jiggle=no_jiggle)
 
         def delete(self):
@@ -52,17 +53,23 @@ def start_window():
                     inst_to_delete.add(comp)
                     # not _nodes.update_node_line_data() but
                     comp.parent = None
-            if g.selected_figure.components:
+            if isinstance(g.selected_figure, nodes.node) and g.selected_figure.connections:
                 for connection in g.selected_figure.connections:
                     inst_to_delete.add(connection)
-                    relevant = (i for i in connection.to_node.connections if i.to_node == inst_to_delete or i.from_node == inst_to_delete)
+                    if connection.components:
+                        for comp in connection.components:
+                            inst_to_delete.add(comp)
+                    """relevant = (i for i in connection.to_node.connections if i.to_node == inst_to_delete or i.from_node == inst_to_delete)
                     if relevant:
                         for link_inst in relevant:
-                            inst_to_delete.union(link_inst.components)
+                            inst_to_delete.union(link_inst.components)"""
 
             for item in inst_to_delete:
                 g.graph.delete_figure(item.figure_id)
             print(f"Deleted items asociated with {g.selected_figure}")
+
+            g.selected_figure = None
+            print("Not sure if def delete() does everything it needs to do yet.")
 
 
 
@@ -134,7 +141,6 @@ def start_window():
                             w.select(no_jiggle=True)
 
                 if event == "graph+UP":
-                    print("graph UP")
                     w.move()
                     g.start_coords = None
                     g.end_coords = g.graph.ClickPosition
@@ -151,33 +157,42 @@ def start_window():
                 g.last_coord = None
 
             else:
-                #if g.currently_adding_figure and g.last_coord and g.last_coord == (g.currently_adding_figure[0], ending):
-                #    print(f"SAME AS PREVIOUS, IGNORE. currently_adding_figure: {g.currently_adding_figure} / ending: {ending}") # is tuple in a list
-                #    g.currently_adding_figure = []
-                #    return
-                #else:
-                #    print(f"Not returning as not same coords")
                 if not g.currently_adding_figure:
                     g.currently_adding_figure.append(ending)
 
                 else:
-                    #print(f"g.currently_adding_figure[0], ending: {g.currently_adding_figure[0], ending} 000")
                     w.draw(temp=True, custom_coordinates=list((g.currently_adding_figure[0], ending)))
-                    #g.currently_adding_figure = ending
                     g.last_coord = (g.currently_adding_figure[0], ending)
 
 
         def select_tool(event:str):
-            assert g.active_tool in ("rectangle", "circle", "line", "select", "move") if g.active_tool else False
+            """ Set/Change the selected tool (draw shapes/select/move)"""
+            db.announce_fn(f"[select_tool]: event: {event}")
+            assert g.active_tool in ("rectangle", "circle", "line", "select", "move") if g.active_tool else event in ("Add Rectangle with Text", "Add Oval with Text", "Connect Nodes")
+
+
+            right_click_menu = ("Add Rectangle with Text", "Add Oval with Text", "Connect Nodes")
+
+            if event in right_click_menu:
+                if "rectangle" in event.lower():
+                    event = "rectangle"
+                elif "oval" in event.lower():
+                    event = "circle"
+                elif "connect" in event.lower():
+                    event = "line"
+
             g.active_tool = event
-            all_buttons = ["tool_buttons_select", "tool_buttons_rectangle", "tool_buttons_circle", "tool_buttons_line"]
-            for panel in all_buttons:
-                if panel.endswith(event):
+            window[event].update(value=True) # sets the radio button accordingly.
+
+            tool_buttons = ["tool_buttons_select", "tool_buttons_rectangle", "tool_buttons_circle", "tool_buttons_line"]
+
+            for btn in tool_buttons:
+                if btn.endswith(event):
                     window["tool_options_panel"].update(event)
-                    window[panel].unhide_row()
-                    window[panel].update(visible=True)
+                    window[btn].unhide_row()
+                    window[btn].update(visible=True)
                 else:
-                    window[panel].hide_row()
+                    window[btn].hide_row()
 
             if w.show_ratio and event in CAN_RATIO:
                 print ("Ratio not implemented yet.")
@@ -215,7 +230,7 @@ def start_window():
                 [circle_buttons],
                 [line_buttons],
                     ]),                ],
-                [sg.Column(layout=[[sg.Column(layout=[[sg.InputText(default_text=str(w.ratio[0]), size=(2,1), key="ratio_part_1", enable_events=True), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(w.ratio[1]), size=(2,1), key="ratio_part_2", enable_events=True)]], visible=False, key="set_ratio_column", pad=0)]])], [sg.Text("Element text:")],[sg.InputText(default_text="testing", key="add_text", enable_events=True)]] # TODO change "testing" to '' to default to None
+                [sg.Column(layout=[[sg.Column(layout=[[sg.InputText(default_text=str(w.ratio[0]), size=(2,1), key="ratio_part_1", enable_events=True), sg.Text(text=":", size=(1,1)), sg.InputText(default_text=str(w.ratio[1]), size=(2,1), key="ratio_part_2", enable_events=True)]], visible=False, key="set_ratio_column", pad=0)]])]]#, [sg.Text("Element text:")],[sg.InputText(default_text="testing", key="add_text", enable_events=True)]] # TODO change "testing" to '' to default to None
 
 
         header_buttons = [
@@ -268,8 +283,8 @@ def start_window():
             select_tool(g.active_tool)
             g.graph = window["graph"] ## type: sg.Graph
             g.canvas = window["graph"].Widget
-            g.add_text = window["add_text"].Widget
-            g.current_text = g.add_text.get()
+            #g.add_text = window["popup_text_input"].Widget
+            g.current_text = ""#g.add_text.get()
 
 
         setup_window()
@@ -278,36 +293,33 @@ def start_window():
         while True and not window.is_closed():
             event, values = window.read(3000)
             w.values = values
-            if event == "add_text" and not g.changing_text: # oh now I get the thing with issue tracking. I can follow which edit changed what without having to make notes. Ohh...
-                print("user has clicked on add_text, start monitoring for changes.")
-                 # type: sg.Input
-
-
-                print(f'newtext.Get: {g.add_text.get()}')
-                g.current_text=g.add_text.get()# set this to whatever the current value is to make sure it's up to date after any interaction.
+            """if event == "add_text" and not g.changing_text:
+                g.current_text=g.add_text.get()
                 g.changing_text=True
-                print(f"Set g.current_text to {g.current_text}")
-                continue
+                continue"""
 
                 #if window._focus_callback(event):# and window._focus_callback(event).event == "add_text":
             if event and event != "__TIMEOUT__":
 
-                if g.changing_text and event != "add_text":
+                """ if g.changing_text and event != "add_text":
                     if len(event) != 1:
                         g.current_text = g.add_text.get()
                         g.changing_text = False
-                        print(f"updated g.current_text to: {g.current_text}")
+                        print(f"updated g.current_text to: {g.current_text}")"""
 
     # Now we go back to doing anything else.
 
-                if w.first_run:
-                    g.current_text = values["add_text"]
+                #if w.first_run:
+                    #g.current_text = values["add_text"]
 
                 if (isinstance(event, str) and event.startswith("Escape")) or window.is_closed():
                     break
 
-                if event == "add_text":
-                    g.current_text = values["add_text"]
+                #if event in ("popup_text_input", "popup_text_done", "popup_text_cancelled"):
+                    #print(f"Event: `{event}`")
+
+                """if event == "add_text":
+                    g.current_text = values["add_text"]"""
 
                 if event == "new":
                     print("New doesn't work yet.")
@@ -339,6 +351,13 @@ def start_window():
                 elif event == "delete" and g.selected_figure:
                     print(f"Deleting {g.selected_figure} and components.")
                     w.delete()
+
+
+                elif event in ("Add Rectangle with Text", "Add Oval with Text", "Connect Nodes"):
+                    print(f"event going to select_tool: {event}")
+                    select_tool(event)
+                    pass
+
                     """
                 elif event.startswith("set_ratio"):
                     w.show_ratio = not w.show_ratio
