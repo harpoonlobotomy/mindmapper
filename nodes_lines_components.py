@@ -208,6 +208,15 @@ class desk:
         self.temp_figures:list[str] = [] # figure_ids for temp items.
 
     #def delete_components
+    def get_all_components(self):
+        components = list()
+        for node in self.nodes:
+            if node.components:
+                components.extend(node.components)
+
+        self.components = components # it exists, might as well try to use it once.
+        return components
+
 
     def get_node_by_figure_id(self, figure_id):
 
@@ -224,6 +233,32 @@ class desk:
                 lines = list(i.from_node for i in self.lines if i.figure_id == figure_id)
                 if lines:
                     return list(i.from_node for i in self.lines if i.figure_id == figure_id)[0]"""
+
+    def get_instances_by_figure_id(self, figures):
+
+        """just the plural version of get_node_by_figure_id"""
+        instances = set()
+        if not figures:
+            return set()
+        print(f"figures: {figures}")
+        if isinstance(figures, int):
+            instances.add(self.get_node_by_figure_id(figures))
+            return instances
+        for figure in figures:
+            instances.add(self.get_node_by_figure_id(figure))
+
+        return instances
+
+    def edit_text_label(self, target_of_doubleclick:node):
+        """
+    Here, use the popup window at mouselocationto get the new input.
+        """
+        newtext = "test_text_oop"
+        text_label = list(i for i in target_of_doubleclick.components if i.component_type == "text_label")
+        if text_label:
+            text_label[0].text = newtext
+            g.add_text.update(newtext)
+
 
     def connect_nodes_with_line(self, line_figure_id:int, from_node=None, to_node=None, to_coords=None): # use a version of this again with the update. Make them work together better. Same goal.
 
@@ -500,7 +535,6 @@ class desk:
             half_text_h = (new_text_bbox[3] - new_text_bbox[1])/2
 
             g.graph.relocate_figure(text_figure_id, new_text_bbox[0] + half_text_w, new_text_bbox[1] + half_text_h)
-
             top_left = g.canvas.bbox(text_figure_id)[0]-5, g.canvas.bbox(text_figure_id)[1]-5
             bottom_right = g.canvas.bbox(text_figure_id)[2]+5, g.canvas.bbox(text_figure_id)[3]+5
 

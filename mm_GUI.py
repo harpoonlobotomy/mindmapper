@@ -43,6 +43,8 @@ def start_window():
             return [] # to clear g.currently_drawing.
 
         def select(self, no_jiggle=False): # Any reason to keep this here and not just direct to _nodes.select directly?
+            """Have forcibly turned off jiggle. Remember this at some point."""
+            no_jiggle = True # TODO: turn this back on, add a delay instead to allow for doubleclicking.
             _nodes.select(selection_area=g.graph.ClickPosition, no_jiggle=no_jiggle)
 
         def delete(self):
@@ -109,7 +111,7 @@ def start_window():
             self.graph_bottom_left = (left, bottom)
             self.graph_top_right = (right, top)
 
-        def update_colour(event, values):
+        def update_colour(self, event, values):
             if event == "stroke_colour":
                 g.line_colour = values[event]
             elif event == "fill_colour":
@@ -127,13 +129,36 @@ def start_window():
             3) Once a single figure/figure-family is selected, we bring up the edit text popup input box (default text == node's current label), apply the edit on enter/ok, revert to the existing on cancel/esc.
             4) Ensure the text component is updated, not just the graph text string.
             """
-            figures = g.graph.get_figures_at_location(g.graph.ClickPosition)
-            if figures and len(figures) == 1:
-                chosen = figures[0]
-                print(f"Chosen: {chosen}")
-            elif figures:
-                components = list(i for i in figures if isinstance(i, nodes.component))
-                print(f"Components: {components}")
+            def get_doubleclick_target():
+                _nodes.get_all_components()
+
+                figures = g.graph.get_figures_at_location(g.graph.ClickPosition)
+                if figures and len(figures) == 1:
+                    chosen = figures[0]
+                    print(f"Chosen: {chosen}")
+                    return _nodes.get_node_by_figure_id(chosen)
+                elif figures:
+                    components = list(i for i in _nodes.components if i.figure_id in figures)
+                    nodes_ = list(i for i in figures if _nodes.get_node_by_figure_id(i))#, list(i for i in figures if not _nodes.get_node_by_figure_id(i))
+                    if len(nodes_) == 1:
+                        return _nodes.get_node_by_figure_id(nodes_[0])
+
+                    for comp in components:
+                        if comp.parent in nodes_:
+                            return comp.parent
+
+                        print(f"comp: {comp}")
+                    if len(nodes_) == len(figures):
+                        print("All parts are figures, pick topmost (or first if you're lazy)")
+                        print(f"Selected {nodes_[0]}")
+                        return nodes_[0]
+
+            target_of_doubleclick = get_doubleclick_target()
+            if target_of_doubleclick:
+                assert isinstance(target_of_doubleclick, nodes.node)
+                print(f"target of doubleclick: {target_of_doubleclick}")
+                g.selected_figure = target_of_doubleclick
+                _nodes.edit_text_label(target_of_doubleclick)
 
         def end_current_drawing():
             """ Just exists to clear the current drawing in the case of polygons etc. Later can decide if a polygon should keep drawing even if you've clicked off."""
@@ -324,6 +349,7 @@ def start_window():
 
             if event == "doubleclicked":
                 do_doubleclick()
+                continue
 
 
             """
