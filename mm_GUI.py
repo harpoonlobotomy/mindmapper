@@ -28,17 +28,31 @@ def start_window():
             self.ratio:tuple[int,int] = (self.ratio_part_1, self.ratio_part_2)
             self.show_ratio:bool=False
 
+            self.start_of_click_coords:tuple[int,int] = None
+            self.end_of_click_coords:tuple[int,int] = None
+            """ Held on w. Just a rolling tulple of ints with the initial coords for where the current click-drag started."""
+
+
+        def start_held_click(self, update=False):
+            if update or not self.start_of_click_coords:
+                self.start_of_click_coords = g.graph.ClickPosition
+            return self.start_of_click_coords
+
+        def end_held_click(self, update=True):
+            if update:
+                self.end_of_click_coords = g.graph.ClickPosition
+            return self.end_of_click_coords
 
         def move(self, temp=False):
             if not g.selected_figure:
                 #TODO: get figure at xy if any and set selected.
                 return
-            _nodes.move(target_loc=w.values["graph"], is_temp=temp)
+            _nodes.move(target_loc=w.values["graph"], temp=temp)
 
 
         def draw(self, temp=False, custom_coordinates=None):
             #print(f"custom coordinates: {custom_coordinates} / values: {w.values} / temp: {temp}")
-            _nodes.draw(custom_coordinates if custom_coordinates else g.currently_adding_figure, values=w.values, temp=temp)
+            _nodes.draw(custom_coordinates if custom_coordinates else g.drawing_now_coords, temp=temp)
 
             return [] # to clear g.currently_drawing.
 
@@ -162,7 +176,8 @@ def start_window():
 
         def end_current_drawing():
             """ Just exists to clear the current drawing in the case of polygons etc. Later can decide if a polygon should keep drawing even if you've clicked off."""
-            g.currently_adding_figure = []
+            print("Ending current drawing in end_current_drawing()")
+            g.drawing_now_coords = []
 
         def do_move_and_select(event):
            # if event == "graph+UP":
@@ -199,19 +214,25 @@ def start_window():
         def add_xy(event):
 
             ending = w.values["graph"]
+            starting = w.start_of_click_coords
 
-            if event == "graph+UP":
-                g.currently_adding_figure.append(ending)
-                g.currently_adding_figure = w.draw()
-                g.last_coord = None
+            if not starting:
+                starting = w.start_held_click()
+                return
+
+            elif event == "graph+UP":
+                w.end_held_click(update=True)
+                w.draw(custom_coordinates=(starting, ending))
+                #g.drawing_now_coords = w.draw(custom_coordinates=(starting, ending))
+                print("Ending current drawing because graph+UP()")
+                g.drawing_figure_id = None
+                w.start_of_click_coords = None
+                w.end_of_click_coords = None
+                #window.refresh()
 
             else:
-                if not g.currently_adding_figure:
-                    g.currently_adding_figure.append(ending)
-
-                else:
-                    w.draw(temp=True, custom_coordinates=list((g.currently_adding_figure[0], ending)))
-                    g.last_coord = (g.currently_adding_figure[0], ending)
+                w.draw(temp=True, custom_coordinates=list((starting, ending)))
+                    #g.last_coord = (g.drawing_now_coords[0], ending)
 
 
         def select_tool(event:str):
@@ -341,57 +362,24 @@ def start_window():
             window.bind('<Double-Button-1>', "doubleclicked")
 
         setup_window()
-        g.currently_adding_figure = []
+        g.drawing_now_coords = []
 
 
         while True and not window.is_closed():
-            event, values = window.read(3000)
+            event, values = window.read(1000)
 
-            if event == "doubleclicked":
-                do_doubleclick()
-                continue
-
-
-            """
-            window.bind('<Double-Button-1>', 'doubleclicked')
-
-            """
             w.values = values
-            """if event == "add_text" and not g.changing_text:
-                g.current_text=g.add_text.get()
-                g.changing_text=True
-                continue"""
-
                 #if window._focus_callback(event):# and window._focus_callback(event).event == "add_text":
             if event and event != "__TIMEOUT__":
-
-                """ if g.changing_text and event != "add_text":
-                    if len(event) != 1:
-                        g.current_text = g.add_text.get()
-                        g.changing_text = False
-                        print(f"updated g.current_text to: {g.current_text}")"""
-
-    # Now we go back to doing anything else.
-
-                #if w.first_run:
-                    #g.current_text = values["add_text"]
 
                 if (isinstance(event, str) and event.startswith("Escape")) or window.is_closed():
                     break
 
-                #if event in ("popup_text_input", "popup_text_done", "popup_text_cancelled"):
-                    #print(f"Event: `{event}`")
+                if event == "doubleclicked":
+                    do_doubleclick()
+                    continue
 
-                """if event == "add_text":
-                    g.current_text = values["add_text"]"""
-
-                if event == "new":
-                    print("New doesn't work yet.")
-                    """g.clear_all()
-                    g.graph.erase()"""
-
-
-                if event.startswith("graph"):
+                elif event.startswith("graph"):
 
                     if g.active_tool in ("rectangle", "circle", "line"):
                         add_xy(event)
@@ -399,9 +387,17 @@ def start_window():
                     else:
                         do_move_and_select(event)
 
-
-                elif g.currently_adding_figure:
+                elif g.drawing_now_coords: # so it makes sure the drawing is ended if somehow you clicked off early.
                     end_current_drawing()
+
+
+
+                elif event == "new":
+                    print("New doesn't work yet.")
+                    """g.clear_all()
+                    g.graph.erase()"""
+
+
 
                 elif event in ("rectangle", "circle", "line", "select", "move"):
                     select_tool(event)
