@@ -334,7 +334,7 @@ def start_window():
             g.canvas = window["graph"].Widget
             #g.add_text = window["popup_text_input"].Widget
             g.current_text = ""#g.add_text.get()
-
+            g.window = window
             from consts import ADD_SHAPE_MENU
             g.graph.set_right_click_menu(menu=ADD_SHAPE_MENU)
 
@@ -452,3 +452,6 @@ def start_window():
 
 
 
+if __name__ == "__main__":
+    from init import run
+    run()

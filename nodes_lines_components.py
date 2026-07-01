@@ -41,6 +41,7 @@ class graph_data():
 
         self.graph:sg.Graph = None
         self.canvas:sg.Canvas = None
+        self.window:sg.Window = None
         self.add_text:sg.Input = None
 
         self.temp_figures:list[int] = []
@@ -207,6 +208,23 @@ class desk:
 
         self.temp_figures:list[str] = [] # figure_ids for temp items.
 
+    def edit_text_element(self, figure_id, text):
+
+        g.canvas.itemconfig(figure_id, text=text)
+        print(f"g.canvas.itemconfig: {g.canvas.itemconfig(figure_id)}")
+        print(f'g.canvas.itemconfig["text"]: {g.canvas.itemconfig(figure_id)["text"][-1]}') # <-- this is correct, this recovers the text data.
+
+
+    def edit_element_data(self, element_instance, vars):
+        print("element in edit_element_data")
+        if isinstance(element_instance, component) and element_instance.component_type == "text_label":
+            self.edit_text_element(figure_id=element_instance.figure_id, text=vars["text"])
+            element_instance.text = vars["text"] # Now that I have item_config down, I should be able to do it without storing the text at all.
+            #If I save the parentage as metadata, I should be able to forgoe the classes to at least a significant degree.
+
+
+
+
     #def delete_components
     def get_all_components(self):
         components = list()
@@ -255,9 +273,32 @@ class desk:
         """
         newtext = "test_text_oop"
         text_label = list(i for i in target_of_doubleclick.components if i.component_type == "text_label")
+        if not text_label:
+            print("We have to create the label and bg here.")
+            return
+        # once we have the text (above it's just hardcoded, later it'll be the same popup used in generation), send it back to mm_gui so it can deal with the window properly.
+        print(f"text_label: {text_label[0]}")
+        vars = dict({"text":newtext})
         if text_label:
-            text_label[0].text = newtext
-            g.add_text.update(newtext)
+            self.edit_element_data(text_label[0], vars)
+
+
+            """ itemconfig == altering vals/attrs of graph figure after drawing.
+    canvas.itemconfig(item_id, text="New text")     # Change text
+    canvas.itemconfig(item_id, fill="red")          # Change colour
+    canvas.itemconfig(item_id, state="hidden")      # Hide
+    canvas.itemconfig(item_id, state="normal")      # Show
+
+    canvas.coords(item_id, x, y)                    # Move text/line/etc.
+    canvas.move(item_id, dx, dy)                    # Relative move
+
+    canvas.delete(item_id)                          # Delete
+
+    canvas.tag_raise(item_id)                       # Bring to front
+    canvas.tag_lower(item_id)                       # Send to back
+
+    print canvas.itemconfig(item_id) to see what attrs can be changed.
+            """
 
 
     def connect_nodes_with_line(self, line_figure_id:int, from_node=None, to_node=None, to_coords=None): # use a version of this again with the update. Make them work together better. Same goal.
@@ -528,7 +569,7 @@ class desk:
         g.currently_adding_figure = coordinates
 
         def add_text_to_figure_centre(leader_instance, current_coords) -> tuple[component, component]:
-
+            g.canvas.coords()
             text_figure_id = g.graph.draw_text(text=g.current_text, location=(current_coords[-1]))
             new_text_bbox = bb.centre_on_target(subject=g.canvas.bbox(text_figure_id), target=g.canvas.bbox(leader_instance.figure_id))
             half_text_w = (new_text_bbox[2] - new_text_bbox[0])/2
@@ -697,3 +738,7 @@ class desk:
 
 
 desk_drawer = desk()
+
+if __name__ == "__main__":
+    from init import run
+    run()
